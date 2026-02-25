@@ -16,6 +16,7 @@ glam = "0.30.9"
 wgpu = "28.0.0"
 pollster = "0.4.0"
 tobj = "4.0.3"
+dot_vox = "5.2.0"
 
 [profile.dev]
 opt-level = 1

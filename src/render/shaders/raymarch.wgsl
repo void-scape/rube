@@ -48,6 +48,7 @@ fn child_ptr(node: Node) -> u32 {
 @group(1) @binding(0) var<uniform> camera: CameraData;
 @group(2) @binding(0) var<storage, read> nodes: array<Node>;
 @group(2) @binding(1) var<storage, read> leaves: array<u32>;
+@group(2) @binding(2) var<storage, read> palette: array<u32>;
 
 @compute @workgroup_size(8, 8)
 fn raymarch(@builtin(global_invocation_id) id: vec3<u32>, @builtin(local_invocation_index) index: u32) {
@@ -56,15 +57,43 @@ fn raymarch(@builtin(global_invocation_id) id: vec3<u32>, @builtin(local_invocat
         return;
     }
 	let ray = get_primary_ray(id.xy, sz);
-	let hit = ray_cast(ray.ro, ray.rd, false, index);
+	let hit = ray_cast(ray.ro, ray.rd, index);
 	// if hit.material_id == 69 {
     //     return textureStore(output, id.xy, vec4(vec3(0.02), 1.0));
 	// } 
 	if hit.material_id != 0 && hit.material_id != 69 {
-        textureStore(output, id.xy, vec4((hit.normal + 1.0) / 2.0, 1.0));
+		// textureStore(output, id.xy, vec4((hit.normal + 1.0) / 2.0, 1.0));
+        textureStore(output, id.xy, ray_trace(hit, index));
     } else {
         textureStore(output, id.xy, vec4(0.0, 0.0, 0.0, 1.0));
     }
+}
+
+fn ray_trace(hit: HitInfo, index: u32) -> vec4<f32> {
+	let light_pos = vec3<f32>(0.6, 3.0, 0.6); 
+	let light_vec = light_pos - hit.pos;
+	let light_dist = length(light_vec);
+	let light_dir = light_vec / light_dist;
+	let shadow_origin = hit.pos + hit.normal * 0.000001; 
+	let shadow_hit = ray_cast(shadow_origin, light_dir, index);
+	var shadow_factor = 1.0; 
+	if shadow_hit.material_id != 0u && shadow_hit.material_id != 69u {
+		let hit_dist = distance(shadow_hit.pos, shadow_origin);
+		if hit_dist < light_dist {
+			shadow_factor = 0.1;
+		}
+	}
+
+	// let n_dot_l = max(dot(hit.normal, light_dir), 0.0);
+	// let base_color = vec3(0.8);
+	let base_color_bits = palette[hit.material_id];
+	let base_color = vec3(
+		f32((base_color_bits >> 0) & 0xff) / 255.0,
+		f32((base_color_bits >> 8) & 0xff) / 255.0,
+		f32((base_color_bits >> 16) & 0xff) / 255.0,
+	);
+	let final_color = base_color * shadow_factor;
+	return vec4(final_color, 1.0);
 }
 
 struct HitInfo {
@@ -74,7 +103,7 @@ struct HitInfo {
 }
 
 var<workgroup> gs_stack: array<array<u32, 11>, 64>;
-fn ray_cast(origin_in: vec3<f32>, dir_in: vec3<f32>, coarse: bool, local_idx: u32) -> HitInfo {
+fn ray_cast(origin_in: vec3<f32>, dir_in: vec3<f32>, local_idx: u32) -> HitInfo {
     var origin = origin_in;
     var dir = dir_in;
 
@@ -117,9 +146,6 @@ fn ray_cast(origin_in: vec3<f32>, dir_in: vec3<f32>, coarse: bool, local_idx: u3
     
     var side_dist: vec3<f32>;
     for (var i = 0; i < 256; i++) {
-        if coarse && i > 20 && is_leaf(node) { 
-			break;
-		}
         var child_index = node_cell_index(pos, scale_exp) ^ mirror_mask;
         // Descend
         while (bitu64(node.maskl, node.maskh, child_index) != 0u && !is_leaf(node)) {

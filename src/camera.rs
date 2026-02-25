@@ -11,6 +11,7 @@ pub struct Camera {
     pub znear: f32,
     pub zfar: f32,
     pub speed: f32,
+    pub half_speed: bool,
     pub left: bool,
     pub right: bool,
     pub forward: bool,
@@ -23,6 +24,9 @@ pub struct Camera {
 impl Camera {
     pub fn handle_key(&mut self, key: KeyCode, state: ElementState) {
         match key {
+            KeyCode::ControlLeft => {
+                self.half_speed = state.is_pressed();
+            }
             KeyCode::KeyE => {
                 if state.is_pressed() {
                     self.disabled = !self.disabled;
@@ -40,7 +44,7 @@ impl Camera {
             KeyCode::KeyS => {
                 self.back = state.is_pressed();
             }
-            KeyCode::Space | KeyCode::ControlLeft => {
+            KeyCode::Space => {
                 self.up = state.is_pressed();
             }
             KeyCode::ShiftLeft => {
@@ -67,12 +71,17 @@ impl Camera {
             let mut dxz = Vec3::ZERO;
             dxz += forward * (self.forward as u32 as f32 - self.back as u32 as f32);
             dxz += right * (self.right as u32 as f32 - self.left as u32 as f32);
-            self.translation += dxz.normalize_or_zero() * self.speed * dt;
+            let speed = if self.half_speed {
+                self.speed / 8.0
+            } else {
+                self.speed
+            };
+            self.translation += dxz.normalize_or_zero() * speed * dt;
             if self.down {
-                self.translation.y -= self.speed * dt;
+                self.translation.y -= speed * dt;
             }
             if self.up {
-                self.translation.y += self.speed * dt;
+                self.translation.y += speed * dt;
             }
         }
     }

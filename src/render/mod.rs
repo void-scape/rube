@@ -20,6 +20,13 @@ pub fn byte_slice<T>(slice: &[T]) -> &[u8] {
     unsafe { std::slice::from_raw_parts(slice.as_ptr().cast(), std::mem::size_of_val(slice)) }
 }
 
+/// Cast a slice to mutable bytes.
+pub fn byte_slice_mut<T>(slice: &mut [T]) -> &mut [u8] {
+    unsafe {
+        std::slice::from_raw_parts_mut(slice.as_mut_ptr().cast(), std::mem::size_of_val(slice))
+    }
+}
+
 pub struct Renderer {
     driver: Driver,
     marcher: RayMarchPipeline,
@@ -50,9 +57,16 @@ impl Renderer {
         }
     }
 
+    #[allow(unused)]
     pub fn load_obj<P: AsRef<Path>>(&mut self, path: P) {
         self.tree
             .write_tree(&self.driver, &tree::VoxelTree::from_obj(path));
+    }
+
+    #[allow(unused)]
+    pub fn load_vox<P: AsRef<Path>>(&mut self, path: P) {
+        self.tree
+            .write_tree(&self.driver, &tree::VoxelTree::from_vox(path));
     }
 
     pub fn resize(&mut self, size: PhysicalSize<u32>) {

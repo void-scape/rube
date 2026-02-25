@@ -19,7 +19,7 @@ pub struct World {
 
 pub fn create_world(window: &'static glazer::winit::window::Window) -> World {
     let mut renderer = Renderer::new(window);
-    renderer.load_obj("assets/lucy.obj");
+    renderer.load_vox("assets/sponza.vox");
     World {
         sliding_fps: VecDeque::with_capacity(100),
         renderer,
@@ -30,7 +30,7 @@ pub fn create_world(window: &'static glazer::winit::window::Window) -> World {
             fov: 90f32.to_radians(),
             znear: 0.01,
             zfar: 1000.0,
-            speed: 1.0,
+            speed: 0.5,
             ..Default::default()
         },
     }
