@@ -1,0 +1,12 @@
+[package]
+name = "rube-voxelize"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rube-voxel = { path = "../rube-voxel" }
+tint = { git = "https://github.com/void-scape/tint", rev = "8cf23787095301f2644487750c4a4db39a08b60e" }
+glam = "0.30.9"
+tobj = "4.0.3"
+dot_vox = "5.2.0"
+bzip2 = "0.6.1"

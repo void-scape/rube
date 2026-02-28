@@ -1,19 +1,18 @@
 use crate::{
-    HEIGHT, WIDTH,
-    camera::Camera,
-    render::{
-        camera::CameraBindGroup, driver::Driver, postprocess::PostprocessPipeline,
-        raymarch::RayMarchPipeline, tree::VoxelTreeBindGroup,
-    },
+    camera_bind_group::CameraBindGroup, lighting::LightingPipeline,
+    postprocess::PostprocessPipeline, raymarch::RayMarchPipeline,
+    tree_bind_group::VoxelTreeBindGroup,
 };
-use glazer::winit::{dpi::PhysicalSize, window::Window};
-use std::path::Path;
+use rube_platform::Driver;
+use rube_platform::winit::dpi::PhysicalSize;
 
+pub use camera::Camera;
 mod camera;
-mod driver;
+mod camera_bind_group;
+mod lighting;
 mod postprocess;
 mod raymarch;
-mod tree;
+mod tree_bind_group;
 
 /// Cast a slice to bytes.
 pub fn byte_slice<T>(slice: &[T]) -> &[u8] {
@@ -27,53 +26,65 @@ pub fn byte_slice_mut<T>(slice: &mut [T]) -> &mut [u8] {
     }
 }
 
+#[macro_export]
+macro_rules! concat_files {
+    ($($path:expr),* $(,)?) => {
+        concat!($(include_str!($path)),*)
+    };
+}
+
+#[macro_export]
+macro_rules! include_wgsl {
+    ($first_path:literal $(,)? $($path:literal),* $(,)?) => {
+        rube_platform::wgpu::ShaderModuleDescriptor {
+            label: Some($first_path),
+            source: rube_platform::wgpu::ShaderSource::Wgsl($crate::concat_files!($first_path, $($path),*).into()),
+        }
+    };
+}
+
 pub struct Renderer {
     driver: Driver,
     marcher: RayMarchPipeline,
+    lighting: LightingPipeline,
+    postprocess: PostprocessPipeline,
     camera: CameraBindGroup,
     tree: VoxelTreeBindGroup,
-    postprocess: PostprocessPipeline,
 }
 
 impl Renderer {
-    pub fn new(window: &'static Window) -> Self {
-        let driver = pollster::block_on(Driver::new(window, WIDTH as u32, HEIGHT as u32));
+    pub fn new(driver: Driver) -> Self {
         let postprocess = postprocess::PostprocessPipeline::new(&driver);
         let camera = CameraBindGroup::new(&driver);
         let tree = VoxelTreeBindGroup::new(&driver);
-        let marcher = raymarch::RayMarchPipeline::new(
+        let marcher = RayMarchPipeline::new(&driver, &camera, &tree);
+        let lighting = LightingPipeline::new(
             &driver,
+            marcher.compute_texture_view(),
             postprocess.compute_texture_view(),
-            &camera,
             &tree,
         );
 
         Self {
             driver,
             marcher,
-            tree,
-            camera,
+            lighting,
             postprocess,
+            camera,
+            tree,
         }
     }
 
-    #[allow(unused)]
-    pub fn load_obj<P: AsRef<Path>>(&mut self, path: P) {
-        self.tree
-            .write_tree(&self.driver, &tree::VoxelTree::from_obj(path));
-    }
-
-    #[allow(unused)]
-    pub fn load_vox<P: AsRef<Path>>(&mut self, path: P) {
-        self.tree
-            .write_tree(&self.driver, &tree::VoxelTree::from_vox(path));
+    pub fn load_map(&mut self, map_bytes: &[u8]) {
+        let tree = rube_voxel::tree::VoxelTree::decompress(map_bytes);
+        self.tree.write_tree(&self.driver, &tree);
     }
 
     pub fn resize(&mut self, size: PhysicalSize<u32>) {
         self.driver.resize(size.width, size.height);
     }
 
-    pub fn render(&self, camera: &Camera) {
+    pub fn render(&mut self, camera: &Camera) {
         let Some(tree_bind_group) = &self.tree.bind_group else {
             return;
         };
@@ -88,12 +99,18 @@ impl Renderer {
             .driver
             .device
             .create_command_encoder(&Default::default());
+        if let Some(buffer) = &self.tree.active {
+            // clear just the count
+            self.driver.queue.write_buffer(buffer, 0, &[0; 4]);
+        }
         self.marcher.compute_pass(
             &self.driver,
             &mut encoder,
             &self.camera.bind_group,
             tree_bind_group,
         );
+        self.lighting
+            .compute_pass(&self.driver, &mut encoder, tree_bind_group);
         self.postprocess.render_pass(&mut encoder, &surface_view);
         self.driver.queue.submit([encoder.finish()]);
         surface_texture.present();

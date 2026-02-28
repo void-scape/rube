@@ -1,0 +1,34 @@
+[package]
+name = "rube-platform"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["dylib", "rlib"]
+
+[features]
+dev = ["hot-reload"]
+hot-reload = ["libc"]
+
+[dependencies]
+wgpu = "28.0.0"
+libc = { version = "0.2", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+pollster = "0.4.0"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+winit = { version = "0.30", default-features = false, features = [
+	"rwh_06",
+	"x11",
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+winit = { version = "0.30", default-features = false, features = ["rwh_06"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+winit = { version = "0.30", default-features = false, features = ["rwh_06"] }
+wasm-bindgen = "=0.2.103"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["Performance"] }
+console_error_panic_hook = "0.1"

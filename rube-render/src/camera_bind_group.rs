@@ -1,5 +1,6 @@
-use crate::{camera::Camera, render::driver::Driver};
+use crate::camera::Camera;
 use glam::{Mat4, Vec3};
+use rube_platform::{Driver, wgpu};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -65,8 +66,6 @@ impl CameraBindGroup {
             origin: camera.translation,
             _padding: 0.0,
         };
-        driver
-            .queue
-            .write_buffer(&self.uniform, 0, crate::render::byte_slice(&[uniform]));
+        driver.queue.write_buffer(&self.uniform, 0, crate::byte_slice(&[uniform]));
     }
 }

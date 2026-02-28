@@ -1,0 +1,12 @@
+[package]
+name = "rube-render"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["dylib", "rlib"]
+
+[dependencies]
+rube-platform = { path = "../rube-platform" }
+rube-voxel = { path = "../rube-voxel" }
+glam = "0.30.9"

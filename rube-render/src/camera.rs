@@ -1,5 +1,5 @@
 use glam::{Mat4, Vec3};
-use glazer::winit::{event::ElementState, keyboard::KeyCode};
+use rube_platform::winit::{event::ElementState, keyboard::KeyCode};
 use std::f32::consts::FRAC_PI_2;
 
 #[derive(Debug, Default)]
@@ -25,7 +25,7 @@ impl Camera {
     pub fn handle_key(&mut self, key: KeyCode, state: ElementState) {
         match key {
             KeyCode::ControlLeft => {
-                self.half_speed = state.is_pressed();
+                self.half_speed = !state.is_pressed();
             }
             KeyCode::KeyE => {
                 if state.is_pressed() {

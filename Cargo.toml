@@ -1,5 +1,15 @@
+[workspace]
+resolver = "3"
+members = [
+	"rube",
+	"rube-render",
+	"rube-voxelize",
+	"rube-platform",
+	"rube-voxel",
+]
+
 [package]
-name = "rube"
+name = "rube-bin"
 version = "0.1.0"
 edition = "2024"
 
@@ -8,18 +18,32 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["dev"]
-dev = ["glazer/hot-reload", "glam/glam-assert"]
+dev = ["rube-platform/dev", "rube/dev"]
 
 [dependencies]
-glazer = { path = "../glazer", default-features = false }
-glam = "0.30.9"
-wgpu = "28.0.0"
-pollster = "0.4.0"
-tobj = "4.0.3"
-dot_vox = "5.2.0"
+rube-platform = { path = "rube-platform" }
+rube = { path = "rube" }
 
-[profile.dev]
-opt-level = 1
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+wasm-bindgen = "=0.2.103"
+wasm-bindgen-futures = "0.4"
 
+# optimize dependencies expect for rube crates
 [profile.dev.package."*"]
 opt-level = 3
+
+[profile.dev.package.rube]
+opt-level = 0
+
+[profile.dev.package.rube-render]
+opt-level = 0
+
+[profile.dev.package.rube-voxel]
+opt-level = 0
+
+[profile.dev.package.rube-voxelize]
+opt-level = 0
+
+[profile.dev.package.rube-platform]
+opt-level = 0

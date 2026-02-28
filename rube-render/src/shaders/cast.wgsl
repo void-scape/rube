@@ -1,26 +1,115 @@
+@group(0) @binding(0) var<uniform> cell_size: f32;
+@group(0) @binding(1) var<storage, read> nodes: array<Node>;
+@group(0) @binding(2) var<storage, read> leaves: array<u32>;
+@group(0) @binding(3) var<storage, read_write> voxel_state: array<atomic<u32>>;
+@group(0) @binding(4) var<storage, read> palette: array<vec4<f32>>;
+@group(0) @binding(5) var<storage, read_write> active_voxels: VisibleVoxelFaces;
+
+struct VisibleVoxelFaces {
+    counter: atomic<u32>,
+    faces: array<PackedVoxelFace>,
+}
+
+struct PackedVoxelFace {
+	pos: vec3<f32>,
+	packed: u32,
+}
+
+fn pack_voxel_face(leaf_id: u32, normal: vec3<f32>, pos: vec3<f32>) -> PackedVoxelFace {
+	var out: PackedVoxelFace;
+	out.pos = pos;
+	out.packed = (leaf_id << 3) | normal_to_face(normal);
+	return out;
+}
+
+struct VoxelFace {
+	pos: vec3<f32>,
+	leaf_id: u32,
+	face_id: u32,
+}
+
+fn unpack_voxel_face(face: PackedVoxelFace) -> VoxelFace {
+	var out: VoxelFace;
+	out.pos = face.pos;
+	out.leaf_id = face.packed >> 3;
+	out.face_id = face.packed & 7;
+	return out;
+}
+
+fn normal_to_face(n: vec3<f32>) -> u32 {
+    let abs_n = abs(n);
+    if abs_n.x >= abs_n.y && abs_n.x >= abs_n.z {
+        return select(1u, 0u, n.x > 0.0);
+    } else if abs_n.y >= abs_n.z {
+        return select(3u, 2u, n.y > 0.0);
+    } else {
+        return select(5u, 4u, n.z > 0.0);
+    }
+}
+
+struct VoxelState {
+	hit: bool,
+	occluded: bool,
+	material_id: u32,
+	raw: u32,
+}
+
+fn try_queue_leaf_face(leaf_id: u32, face_id: u32, material_id: u32) -> bool {
+	var state = load_voxel_state(leaf_id, face_id);
+    var queued = false;
+    loop {
+		if state.hit {
+			return false;
+		}
+		let packed = pack_voxel_state(state.raw, face_id, true, false, material_id);
+        let res = atomicCompareExchangeWeak(&voxel_state[leaf_id], state.raw, packed);
+        if res.exchanged {
+            queued = true;
+            break;
+        }
+        state = unpack_voxel_state(res.old_value, face_id);
+    }
+	return queued;
+}
+
+fn occlude_leaf_face(leaf_id: u32, face_id: u32) {
+	var state = load_voxel_state(leaf_id, face_id);
+    loop {
+		if state.occluded {
+			return;
+		}
+		let packed = pack_voxel_state(state.raw, face_id, true, true, state.material_id);
+        let res = atomicCompareExchangeWeak(&voxel_state[leaf_id], state.raw, packed);
+        if res.exchanged {
+            break;
+        }
+        state = unpack_voxel_state(res.old_value, face_id);
+    }
+}
+
+fn pack_voxel_state(state: u32, face_id: u32, hit: bool, occluded: bool, material_id: u32) -> u32 {
+	let hit_occluded = u32(hit) | (u32(occluded) << 1);
+	let state_mask = 0xff000000u | (3u << (face_id * 2));
+	return (state & ~state_mask) | (hit_occluded << (face_id * 2)) | (material_id << 24);
+}
+
+fn unpack_voxel_state(state: u32, face_id: u32) -> VoxelState {
+	let bits = (state >> (face_id * 2)) & 3;
+	var out: VoxelState;
+	out.hit = (bits & 1) != 0;
+	out.occluded = (bits & 2) != 0;
+	out.material_id = state >> 24;
+	out.raw = state;
+	return out;
+}
+
+fn load_voxel_state(leaf_id: u32, face_id: u32) -> VoxelState {
+	let state = atomicLoad(&voxel_state[leaf_id]);
+	return unpack_voxel_state(state, face_id);
+}
+
 // Sparse-64 voxel tree ray marcher implementation adapted from:
 // https://dubiousconst282.github.io/2024/10/03/voxel-ray-tracing/
-
-struct CameraData {
-    inv_proj_matrix: mat4x4<f32>,
-    origin: vec3<f32>,
-	_pad: f32,
-}
-
-struct Ray {
-    ro: vec3<f32>,
-    rd: vec3<f32>,
-}
-
-fn get_primary_ray(screenPos: vec2<u32>, sz: vec2<u32>) -> Ray {
-    var uv = (vec2<f32>(screenPos) + vec2(0.5)) / vec2<f32>(sz);
-    let ndc = vec2(uv.x * 2.0 - 1.0, -(uv.y * 2.0 - 1.0));
-    let far = camera.inv_proj_matrix * vec4(ndc, 1.0, 1.0);
-    var ray: Ray;
-    ray.rd = normalize(far.xyz / far.w);
-    ray.ro = camera.origin;
-    return ray;
-}
 
 struct Node {
     // [     31    |    1    ]
@@ -44,62 +133,13 @@ fn child_ptr(node: Node) -> u32 {
 	return node.child_ptr_is_leaf >> 1;
 }
 
-@group(0) @binding(0) var output: texture_storage_2d<rgba32float, write>;
-@group(1) @binding(0) var<uniform> camera: CameraData;
-@group(2) @binding(0) var<storage, read> nodes: array<Node>;
-@group(2) @binding(1) var<storage, read> leaves: array<u32>;
-@group(2) @binding(2) var<storage, read> palette: array<u32>;
-
-@compute @workgroup_size(8, 8)
-fn raymarch(@builtin(global_invocation_id) id: vec3<u32>, @builtin(local_invocation_index) index: u32) {
-    let sz = textureDimensions(output);
-    if id.x >= sz.x || id.y >= sz.y {
-        return;
-    }
-	let ray = get_primary_ray(id.xy, sz);
-	let hit = ray_cast(ray.ro, ray.rd, index);
-	// if hit.material_id == 69 {
-    //     return textureStore(output, id.xy, vec4(vec3(0.02), 1.0));
-	// } 
-	if hit.material_id != 0 && hit.material_id != 69 {
-		// textureStore(output, id.xy, vec4((hit.normal + 1.0) / 2.0, 1.0));
-        textureStore(output, id.xy, ray_trace(hit, index));
-    } else {
-        textureStore(output, id.xy, vec4(0.0, 0.0, 0.0, 1.0));
-    }
-}
-
-fn ray_trace(hit: HitInfo, index: u32) -> vec4<f32> {
-	let light_pos = vec3<f32>(0.6, 3.0, 0.6); 
-	let light_vec = light_pos - hit.pos;
-	let light_dist = length(light_vec);
-	let light_dir = light_vec / light_dist;
-	let shadow_origin = hit.pos + hit.normal * 0.000001; 
-	let shadow_hit = ray_cast(shadow_origin, light_dir, index);
-	var shadow_factor = 1.0; 
-	if shadow_hit.material_id != 0u && shadow_hit.material_id != 69u {
-		let hit_dist = distance(shadow_hit.pos, shadow_origin);
-		if hit_dist < light_dist {
-			shadow_factor = 0.1;
-		}
-	}
-
-	// let n_dot_l = max(dot(hit.normal, light_dir), 0.0);
-	// let base_color = vec3(0.8);
-	let base_color_bits = palette[hit.material_id];
-	let base_color = vec3(
-		f32((base_color_bits >> 0) & 0xff) / 255.0,
-		f32((base_color_bits >> 8) & 0xff) / 255.0,
-		f32((base_color_bits >> 16) & 0xff) / 255.0,
-	);
-	let final_color = base_color * shadow_factor;
-	return vec4(final_color, 1.0);
-}
-
 struct HitInfo {
+	leaf_id: u32,
     material_id: u32,
     pos: vec3<f32>,
     normal: vec3<f32>,
+	escaped: bool,
+	scale_exp: u32,
 }
 
 var<workgroup> gs_stack: array<array<u32, 11>, 64>;
@@ -122,7 +162,7 @@ fn ray_cast(origin_in: vec3<f32>, dir_in: vec3<f32>, local_idx: u32) -> HitInfo 
 
     if tnear > tfar || tfar < 0.0 {
         var hit: HitInfo;
-        hit.material_id = 69u;
+        hit.escaped = true;
         return hit;
     }
     if tnear > 0.0 {
@@ -196,6 +236,7 @@ fn ray_cast(origin_in: vec3<f32>, dir_in: vec3<f32>, local_idx: u32) -> HitInfo 
     
     var hit: HitInfo;
     hit.material_id = 0u;
+	hit.escaped = true;
     
     if is_leaf(node) && scale_exp <= 21 {
         pos = mirrored_pos(pos, dir, false);
@@ -203,6 +244,8 @@ fn ray_cast(origin_in: vec3<f32>, dir_in: vec3<f32>, local_idx: u32) -> HitInfo 
 
 		let leaf_index = child_ptr(node) + popcnt(node.maskl, node.maskh, child_index);
         hit.material_id = (leaves[leaf_index / 4u] >> ((leaf_index % 4u) * 8u)) & 0xffu;
+		hit.leaf_id = leaf_index;
+		hit.escaped = false;
         hit.pos = pos;
 
         let tmax: f32 = min(min(side_dist.x, side_dist.y), side_dist.z);

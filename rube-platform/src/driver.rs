@@ -1,4 +1,5 @@
-use glazer::winit::window::Window;
+use std::sync::Arc;
+use winit::window::Window;
 
 pub struct Driver {
     pub device: wgpu::Device,
@@ -10,7 +11,7 @@ pub struct Driver {
 }
 
 impl Driver {
-    pub async fn new(window: &'static Window, width: u32, height: u32) -> Self {
+    pub(crate) async fn new(window: Arc<Window>, width: u32, height: u32) -> Self {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions::default())
@@ -19,11 +20,11 @@ impl Driver {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
-                required_features: wgpu::Features::FLOAT32_FILTERABLE,
+                required_features: wgpu::Features::FLOAT32_FILTERABLE
+                    | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS
+                    | wgpu::Features::TIMESTAMP_QUERY,
                 required_limits: adapter.limits(),
-                experimental_features: wgpu::ExperimentalFeatures::disabled(),
-                memory_hints: wgpu::MemoryHints::MemoryUsage,
-                trace: wgpu::Trace::Off,
+                ..Default::default()
             })
             .await
             .unwrap();

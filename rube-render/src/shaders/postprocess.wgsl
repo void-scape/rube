@@ -12,10 +12,12 @@ fn vertex(@builtin(vertex_index) id: u32) -> VertexOutput {
     return out;
 }
 
+override GAMMA_CORRECT: bool = false;
 @group(0) @binding(0) var texture: texture_2d<f32>;
-@group(0) @binding(1) var texture_sampler: sampler;
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
-	return textureSample(texture, texture_sampler, in.uv);
+	let sz = textureDimensions(texture);
+    let color = textureLoad(texture, vec2<i32>(in.uv * vec2<f32>(sz)), 0);
+	return select(color, vec4(pow(color.rgb, vec3(1.0 / 2.2)), color.a), GAMMA_CORRECT);
 }

@@ -1,0 +1,19 @@
+[package]
+name = "rube"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["dylib", "rlib"]
+
+[features]
+dev = []
+
+[dependencies]
+rube-platform = { path = "../rube-platform" }
+rube-render = { path = "../rube-render" }
+glam = "0.30.9"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
+reqwest = "0.13.2"
