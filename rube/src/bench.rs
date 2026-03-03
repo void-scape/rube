@@ -25,6 +25,7 @@ impl Benchmarker {
     }
 }
 
+#[allow(unused)]
 pub fn update(bencher: &mut Benchmarker, camera: &mut Camera, dt: f32) {
     let mut current_frame = 0;
     let mut accum = 0.0;

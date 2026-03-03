@@ -5,25 +5,57 @@ use crate::tree::VoxelTree;
 use glam::{IVec3, UVec3, Vec3};
 
 #[derive(Default, Clone, Copy)]
-pub struct HitInfo {
-    pub leaf_index: usize,
-    pub material_id: u8,
+pub struct PackedHitInfo {
+    leaf_index_and_normal_and_escaped: u32,
     pub position: Vec3,
-    pub normal: Vec3,
-    pub escaped: bool,
-    pub reads: usize,
-    pub center: Vec3,
-    pub half_size: f32,
 }
+
+impl PackedHitInfo {
+    pub fn leaf_index(&self) -> usize {
+        (self.leaf_index_and_normal_and_escaped >> 4) as usize
+    }
+
+    pub fn normal_index(&self) -> usize {
+        ((self.leaf_index_and_normal_and_escaped >> 1) & 7) as usize
+    }
+
+    pub fn normal(&self) -> Vec3 {
+        match self.normal_index() {
+            0 => Vec3::new(1.0, 0.0, 0.0),
+            1 => Vec3::new(-1.0, 0.0, 0.0),
+            2 => Vec3::new(0.0, 1.0, 0.0),
+            3 => Vec3::new(0.0, -1.0, 0.0),
+            4 => Vec3::new(0.0, 0.0, 1.0),
+            5 => Vec3::new(0.0, 0.0, -1.0),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn escaped(&self) -> bool {
+        (self.leaf_index_and_normal_and_escaped & 1) == 1
+    }
+}
+
+// #[derive(Default, Clone, Copy)]
+// pub struct HitInfo {
+//     pub leaf_index: usize,
+//     pub material_id: u8,
+//     pub position: Vec3,
+//     pub normal: Vec3,
+//     pub escaped: bool,
+//     pub reads: usize,
+//     pub center: Vec3,
+//     pub half_size: f32,
+// }
 
 pub struct Ray {
     pub origin: Vec3,
     pub direction: Vec3,
 }
 
-pub fn cast_ray(tree: &VoxelTree, mut ray: Ray) -> HitInfo {
-    let mut hit = HitInfo {
-        escaped: true,
+pub fn cast_ray(tree: &VoxelTree, mut ray: Ray) -> PackedHitInfo {
+    let mut hit = PackedHitInfo {
+        leaf_index_and_normal_and_escaped: 1,
         ..Default::default()
     };
 
@@ -51,7 +83,7 @@ pub fn cast_ray(tree: &VoxelTree, mut ray: Ray) -> HitInfo {
     let mut scale_exp = 21;
     let mut node_index = 0;
     let mut node = tree.nodes[node_index];
-    hit.reads += 1;
+    // hit.reads += 1;
 
     // Mirror coordinates to negative ray octant to simplify cell intersections
     let mut mirror_mask = 0;
@@ -80,7 +112,7 @@ pub fn cast_ray(tree: &VoxelTree, mut ray: Ray) -> HitInfo {
             gs_stack[scale_exp >> 1] = node_index;
             node_index = node.child_index() + popcnt(node.mask, child_index);
             node = tree.nodes[node_index];
-            hit.reads += 1;
+            // hit.reads += 1;
             scale_exp -= 2;
             child_index = node_cell_index(pos, scale_exp) ^ mirror_mask;
         }
@@ -141,7 +173,7 @@ pub fn cast_ray(tree: &VoxelTree, mut ray: Ray) -> HitInfo {
 
             node_index = gs_stack[scale_exp >> 1];
             node = tree.nodes[node_index];
-            hit.reads += 1;
+            // hit.reads += 1;
         }
     }
 
@@ -150,20 +182,16 @@ pub fn cast_ray(tree: &VoxelTree, mut ray: Ray) -> HitInfo {
         let child_index = node_cell_index(pos, scale_exp);
 
         let leaf_index = node.child_index() + popcnt(node.mask, child_index);
-        hit.material_id = tree.leaves[leaf_index];
-        hit.reads += 1;
-        hit.leaf_index = leaf_index;
-        hit.escaped = false;
+        // hit.material_id = tree.leaves[leaf_index];
+        // hit.reads += 1;
+        hit.leaf_index_and_normal_and_escaped |= (leaf_index as u32) << 4;
+        hit.leaf_index_and_normal_and_escaped &= !1;
+        // hit.leaf_index = leaf_index;
+        // hit.escaped = false;
         hit.position = pos;
 
-        let size_bits = 1u32 << scale_exp;
-        let size = f32::from_bits(0x3f800000 | size_bits) - 1.0;
-        hit.half_size = size * 0.5;
-
-        // 2. Center: We find the min corner and add the half size.
-        // floor_scale already gives us the min corner correctly.
-        let cell_min = floor_scale(pos, scale_exp);
-        hit.center = cell_min + Vec3::splat(hit.half_size);
+        // NOTE: This is currently hard coded in the lighting code so this must be valid here.
+        assert_eq!(scale_exp, 11);
 
         let tmax = side_dist.min_element();
         let normal = if side_dist.x == tmax {
@@ -173,7 +201,17 @@ pub fn cast_ray(tree: &VoxelTree, mut ray: Ray) -> HitInfo {
         } else {
             Vec3::new(0.0, 0.0, -ray.direction.z.signum())
         };
-        hit.normal = normal;
+        let normal_id = match normal.to_array() {
+            [1.0, 0.0, 0.0] => 0,
+            [-1.0, 0.0, 0.0] => 1,
+            [0.0, 1.0, 0.0] => 2,
+            [0.0, -1.0, 0.0] => 3,
+            [0.0, 0.0, 1.0] => 4,
+            [0.0, 0.0, -1.0] => 5,
+            _ => unreachable!("{normal}"),
+        };
+        hit.leaf_index_and_normal_and_escaped |= normal_id << 1;
+        // hit.normal = normal;
     }
     hit
 }
@@ -192,7 +230,7 @@ fn node_cell_index(pos: Vec3, scale_exp: usize) -> usize {
 }
 
 // floor(pos / scale) * scale
-fn floor_scale(pos: Vec3, scale_exp: usize) -> Vec3 {
+pub fn floor_scale(pos: Vec3, scale_exp: usize) -> Vec3 {
     let mask = 0xFFFFFFFF << scale_exp;
     Vec3::new(
         f32::from_bits(pos.x.to_bits() & mask),

@@ -1,16 +1,16 @@
-use ahash::{HashMap, HashMapExt};
+use fxhash::FxHashMap;
 use glam::IVec3;
 
 #[derive(Debug)]
 pub struct VoxelMap {
-    pub chunks: HashMap<IVec3, Brick>,
+    pub chunks: FxHashMap<IVec3, Brick>,
     pub palette: [u32; 256],
 }
 
 impl Default for VoxelMap {
     fn default() -> Self {
         Self {
-            chunks: HashMap::new(),
+            chunks: FxHashMap::default(),
             palette: [u32::MAX; 256],
         }
     }

@@ -1,5 +1,5 @@
 use crate::map::{Brick, VoxelMap};
-use ahash::HashMap;
+use fxhash::FxHashMap;
 use glam::{IVec3, Vec3};
 use std::io::{Read, Write};
 use tint::Color;
@@ -81,7 +81,7 @@ impl Node {
 
 pub fn generate_tree(
     map: &VoxelMap,
-    _node_hash: &mut HashMap<Vec<u8>, u32>,
+    _node_hash: &mut FxHashMap<Vec<u8>, u32>,
     nodes: &mut Vec<Node>,
     leaves: &mut Vec<u8>,
     mut scale: u32,

@@ -1,3 +1,4 @@
+use fxhash::FxHashMap;
 use glam::IVec3;
 use rube::tree::{Node, VoxelTree, generate_tree};
 
@@ -18,7 +19,7 @@ fn main() -> std::io::Result<()> {
             let start = std::time::Instant::now();
             let mut nodes = vec![Node::default()];
             let mut leaves = Vec::new();
-            let mut node_hash = ahash::HashMap::default();
+            let mut node_hash = FxHashMap::default();
             let mut saved_bytes = 0;
             let node = generate_tree(
                 &map,

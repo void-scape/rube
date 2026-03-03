@@ -3,10 +3,11 @@
 
 use crate::{
     march::MarchPass,
-    ray::{HitInfo, Ray, cast_ray},
+    ray::{PackedHitInfo, Ray, cast_ray},
+    scene::Scene,
     tree::VoxelTree,
 };
-use ahash::HashMap;
+use fxhash::FxHashMap;
 use glam::Vec3;
 use rand_core::{Rng, SeedableRng};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
@@ -15,38 +16,34 @@ use std::f32::consts::TAU;
 const SKY_COLOR: Vec3 = Vec3::new(0.246, 0.624, 0.838);
 
 pub struct IndirectPass {
-    seeder: rand_xorshift::XorShiftRng,
-    last_leaf_map: HashMap<usize, VoxelData>,
-    leaf_map: HashMap<usize, VoxelData>,
-    indirect_color: Vec<ColorData>,
+    last_visible_voxels: FxHashMap<usize, VoxelData>,
+    visible_voxels: FxHashMap<usize, VoxelData>,
+    color_buffer: Vec<PackedColorData>,
+    frame: u32,
 }
 
 impl IndirectPass {
     pub fn new(width: usize, height: usize) -> Self {
         Self {
-            seeder: rand_xorshift::XorShiftRng::seed_from_u64(0),
-            last_leaf_map: HashMap::default(),
-            leaf_map: HashMap::default(),
-            indirect_color: vec![ColorData::default(); width * height],
+            last_visible_voxels: FxHashMap::default(),
+            visible_voxels: FxHashMap::default(),
+            color_buffer: vec![PackedColorData::default(); width * height],
+            frame: 0,
         }
     }
 }
 
 #[derive(Clone, Copy)]
-struct ColorData {
-    escaped: bool,
-    leaf_index: usize,
+struct PackedColorData {
+    leaf_index_and_escape: u32,
     color: Vec3,
-    seed: u64,
 }
 
-impl Default for ColorData {
+impl Default for PackedColorData {
     fn default() -> Self {
         Self {
-            escaped: true,
-            leaf_index: 0,
+            leaf_index_and_escape: 1,
             color: Vec3::ZERO,
-            seed: 0,
         }
     }
 }
@@ -55,35 +52,11 @@ impl Default for ColorData {
 struct VoxelData {
     color: Vec3,
     accumulator: Vec3,
-    faces_to_occlude: [(bool, HitInfo); 6],
+    center: Vec3,
     occluded: bool,
-    samples: usize,
-    frame: usize,
+    samples: u16,
+    frame: u16,
 }
-
-fn normal_to_face(normal: Vec3) -> usize {
-    match normal.to_array() {
-        [1.0, 0.0, 0.0] => 0,
-        [-1.0, 0.0, 0.0] => 1,
-        [0.0, 1.0, 0.0] => 2,
-        [0.0, -1.0, 0.0] => 3,
-        [0.0, 0.0, 1.0] => 4,
-        [0.0, 0.0, -1.0] => 5,
-        _ => unreachable!("{normal}"),
-    }
-}
-
-// fn face_to_normal(face: usize) -> Vec3 {
-//     match face {
-//         0 => Vec3::new(1.0, 0.0, 0.0),
-//         1 => Vec3::new(-1.0, 0.0, 0.0),
-//         2 => Vec3::new(0.0, 1.0, 0.0),
-//         3 => Vec3::new(0.0, -1.0, 0.0),
-//         4 => Vec3::new(0.0, 0.0, 1.0),
-//         5 => Vec3::new(0.0, 0.0, -1.0),
-//         _ => unreachable!(),
-//     }
-// }
 
 pub struct DirectionalLight {
     // normalized, points towards the light
@@ -94,95 +67,123 @@ pub struct DirectionalLight {
 
 #[profiling::function]
 pub fn indirect_pass(
-    tree: &VoxelTree,
+    scene: &Scene,
     march_pass: &MarchPass,
     indirect_pass: &mut IndirectPass,
     pixels: &mut [u32],
 ) {
+    let tree = &scene.tree;
     let light = DirectionalLight {
         direction: Vec3::new(0.3, 1.0, 0.3).normalize(),
         color: SKY_COLOR,
         intensity: 0.05,
     };
 
-    indirect_pass.indirect_color.fill(Default::default());
+    indirect_pass.frame = indirect_pass.frame.wrapping_add(1);
+    indirect_pass.color_buffer.fill(Default::default());
     std::mem::swap(
-        &mut indirect_pass.leaf_map,
-        &mut indirect_pass.last_leaf_map,
+        &mut indirect_pass.visible_voxels,
+        &mut indirect_pass.last_visible_voxels,
     );
+
+    // NOTE: currently hardcoded based on the voxelization code
+    let scale_exp = 11;
+    let size_bits = 1u32 << scale_exp;
+    let size = f32::from_bits(0x3f800000 | size_bits) - 1.0;
+    let half_size = size * 0.5;
 
     {
         profiling::scope!("generate leaf map");
-        indirect_pass.leaf_map.clear();
-        for hit in march_pass.hits.iter().filter(|h| !h.escaped) {
-            let entry = indirect_pass
-                .leaf_map
-                .entry(hit.leaf_index)
+
+        indirect_pass.visible_voxels.clear();
+        for hit in march_pass.hits.iter().filter(|h| !h.escaped()) {
+            indirect_pass
+                .visible_voxels
+                .entry(hit.leaf_index())
                 .or_insert_with(|| VoxelData {
                     color: Vec3::ZERO,
                     accumulator: Vec3::ZERO,
-                    faces_to_occlude: [(false, Default::default()); 6],
                     occluded: false,
                     samples: 0,
                     frame: 1,
+                    center: {
+                        let cell_min = crate::ray::floor_scale(hit.position, scale_exp);
+                        cell_min + Vec3::splat(half_size)
+                    },
                 });
-            entry.faces_to_occlude[normal_to_face(hit.normal)] = (true, *hit);
         }
     }
 
     {
         profiling::scope!("shadow occlusion");
-        // TODO: This is still technically incorrect, since faces that suddenly appear
-        // may change the voxel from hidden to visible.
-        indirect_pass.leaf_map.par_iter_mut().for_each(|(_, d)| {
-            let mut occluded = true;
-            for hit in d
-                .faces_to_occlude
-                .iter()
-                .filter_map(|(b, hit)| b.then_some(hit))
-            {
-                let shadow_origin = hit.center + hit.normal * (hit.half_size + 1e-4);
-                let shadow_hit = cast_ray(
-                    tree,
-                    Ray {
-                        origin: shadow_origin,
-                        direction: light.direction,
-                    },
-                );
-                if shadow_hit.escaped {
-                    occluded = false;
-                }
-            }
-            d.occluded = occluded;
-        });
-    }
 
-    {
-        profiling::scope!("generate monte carlo seeds");
-        for data in indirect_pass.indirect_color.iter_mut() {
-            data.seed = indirect_pass.seeder.next_u64();
-        }
+        let visible_faces: [bool; 6] = [
+            light.direction.x > 0.0,
+            light.direction.x < 0.0,
+            light.direction.y > 0.0,
+            light.direction.y < 0.0,
+            light.direction.z > 0.0,
+            light.direction.z < 0.0,
+        ];
+        let normals = [
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(-1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(0.0, -1.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(0.0, 0.0, -1.0),
+        ];
+
+        indirect_pass
+            .visible_voxels
+            .par_iter_mut()
+            .for_each(|(_, d)| {
+                let mut occluded = true;
+                for i in (0..6).filter(|i| visible_faces[*i]) {
+                    let origin = d.center + normals[i] * (half_size + 1e-4);
+                    if cast_ray(
+                        tree,
+                        Ray {
+                            direction: light.direction,
+                            origin,
+                        },
+                    )
+                    .escaped()
+                    {
+                        occluded = false;
+                        break;
+                    }
+                }
+                d.occluded = occluded;
+            });
     }
 
     {
         profiling::scope!("global illumination");
         indirect_pass
-            .indirect_color
+            .color_buffer
             .par_iter_mut()
             .zip(&march_pass.hits)
-            .for_each(|(data, hit)| {
-                if !hit.escaped {
-                    data.color = voxel_indirect(tree, hit, data.seed);
-                    data.leaf_index = hit.leaf_index;
-                    data.escaped = false;
-                }
+            .enumerate()
+            .filter(|(_, (_, h))| !h.escaped())
+            .for_each(|(i, (data, hit))| {
+                data.color =
+                    voxel_indirect(tree, hit, pcg(i as u32 ^ pcg(indirect_pass.frame)) as u64);
+                data.leaf_index_and_escape = (hit.leaf_index() as u32) << 1;
             });
     }
 
     {
         profiling::scope!("accumulate samples");
-        for data in indirect_pass.indirect_color.iter().filter(|d| !d.escaped) {
-            let voxel_data = indirect_pass.leaf_map.get_mut(&data.leaf_index).unwrap();
+        for data in indirect_pass
+            .color_buffer
+            .iter()
+            .filter(|d| (d.leaf_index_and_escape & 1) == 0)
+        {
+            let voxel_data = indirect_pass
+                .visible_voxels
+                .get_mut(&((data.leaf_index_and_escape as usize) >> 1))
+                .unwrap();
             voxel_data.accumulator += data.color;
             voxel_data.samples += 1;
         }
@@ -190,12 +191,14 @@ pub fn indirect_pass(
 
     {
         profiling::scope!("temporal filter");
-        for (key, data) in indirect_pass.leaf_map.iter_mut() {
+        for (key, data) in indirect_pass.visible_voxels.iter_mut() {
             data.color = data.accumulator / data.samples as f32;
-            if let Some(last_data) = indirect_pass.last_leaf_map.get(key) {
-                let frame = last_data.frame + 1;
-                data.color = last_data.color + (data.color - last_data.color) / frame as f32;
-                data.frame = frame;
+            if let Some(last_data) = indirect_pass.last_visible_voxels.get(key) {
+                let frame = last_data.frame.saturating_add(1);
+                if frame < u16::MAX {
+                    data.color = last_data.color + (data.color - last_data.color) / frame as f32;
+                    data.frame = frame;
+                }
             }
         }
     }
@@ -203,8 +206,8 @@ pub fn indirect_pass(
     {
         profiling::scope!("write pixels");
         for (pixel, hit) in pixels.iter_mut().zip(march_pass.hits.iter()) {
-            if !hit.escaped {
-                let data = &indirect_pass.leaf_map[&hit.leaf_index];
+            if !hit.escaped() {
+                let data = &indirect_pass.visible_voxels[&hit.leaf_index()];
                 let color = if data.occluded {
                     data.color * 0.2
                 } else {
@@ -218,10 +221,10 @@ pub fn indirect_pass(
     }
 }
 
-fn voxel_indirect(tree: &VoxelTree, hit: &HitInfo, seed: u64) -> Vec3 {
+fn voxel_indirect(tree: &VoxelTree, hit: &PackedHitInfo, seed: u64) -> Vec3 {
     let mut occlusion = 0.0;
     // compute the shaded point coordinate system using normal N
-    let (nt, nb) = normal_coordinate_system(hit.normal);
+    let (nt, nb) = normal_coordinate_system(hit.normal());
 
     let samples = 1;
     let mut rng = rand_xorshift::XorShiftRng::seed_from_u64(seed);
@@ -231,13 +234,13 @@ fn voxel_indirect(tree: &VoxelTree, hit: &HitInfo, seed: u64) -> Vec3 {
         let sample = uniform_sample_hemipshere(r1, r2);
         // transform the random samples to the shaded point’s local coordinate system
         let local_sample = Vec3::new(
-            sample.x * nb.x + sample.y * hit.normal.x + sample.z * nt.x,
-            sample.x * nb.y + sample.y * hit.normal.y + sample.z * nt.y,
-            sample.x * nb.z + sample.y * hit.normal.z + sample.z * nt.z,
+            sample.x * nb.x + sample.y * hit.normal().x + sample.z * nt.x,
+            sample.x * nb.y + sample.y * hit.normal().y + sample.z * nt.y,
+            sample.x * nb.z + sample.y * hit.normal().z + sample.z * nt.z,
         );
         // Don't forget to apply the cosine law (i.e., multiply by cos(theta) = r1).
         // We should also divide the result by the PDF (1 / (2 * M_PI)), but we can do this after
-        let origin = hit.position + hit.normal * 1e-4;
+        let origin = hit.position + hit.normal() * 1e-4;
         let sample_hit = cast_ray(
             tree,
             Ray {
@@ -245,15 +248,15 @@ fn voxel_indirect(tree: &VoxelTree, hit: &HitInfo, seed: u64) -> Vec3 {
                 direction: local_sample,
             },
         );
-        if !sample_hit.escaped {
+        if !sample_hit.escaped() {
             let dist = hit.position.distance(sample_hit.position);
             let attenuation = (1.0 - (dist / 0.01)).max(0.0);
             occlusion += attenuation * r1;
         }
     }
 
-    let albedo = tree.linear_rgb(hit.material_id as usize);
-    let ao = 1.0 - (occlusion / (samples as f32 * 0.5));
+    let albedo = tree.linear_rgb(tree.leaves[hit.leaf_index()] as usize);
+    let ao = 1.0 - (occlusion / samples as f32);
     albedo * ao
 }
 
@@ -275,4 +278,11 @@ fn uniform_sample_hemipshere(r1: f32, r2: f32) -> Vec3 {
     let x = sin_theta * phi.cos();
     let z = sin_theta * phi.sin();
     Vec3::new(x, r1, z)
+}
+
+// https://gist.github.com/munrocket/236ed5ba7e409b8bdf1ff6eca5dcdc39
+fn pcg(n: u32) -> u32 {
+    let mut h = n.wrapping_mul(747796405).wrapping_add(2891336453);
+    h = ((h >> ((h >> 28) + 4)) ^ h).wrapping_mul(277803737);
+    (h >> 22) ^ h
 }
