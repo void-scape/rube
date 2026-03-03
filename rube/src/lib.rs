@@ -1,11 +1,11 @@
-use crate::camera::Camera;
 use crate::indirect::IndirectPass;
 use crate::march::MarchPass;
 use crate::tree::VoxelTree;
+use crate::{bench::Benchmarker, camera::Camera};
 use glam::Vec3;
 use rube_platform::winit::{event::*, keyboard::*, window::Window};
-use std::{collections::VecDeque, sync::mpsc};
 
+mod bench;
 mod camera;
 mod indirect;
 pub mod map;
@@ -14,38 +14,23 @@ mod ray;
 pub mod tree;
 
 pub struct World {
-    sliding_fps: VecDeque<f32>,
-    tree_loader: mpsc::Receiver<VoxelTree>,
-    tree: Option<VoxelTree>,
+    // sliding_fps: VecDeque<f32>,
+    // tree_loader: mpsc::Receiver<VoxelTree>,
+    tree: VoxelTree,
     camera: Camera,
     march_pass: MarchPass,
     indirect_pass: IndirectPass,
+    bencher: Benchmarker,
 }
 
 pub fn create_world_from_tree(
     path: impl Into<String>,
 ) -> impl FnOnce(&Window, usize, usize) -> World {
     |_, width, height| {
-        let (sender, receiver) = mpsc::channel();
         let path = path.into();
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            sender
-                .send(VoxelTree::decompress(&std::fs::read(path).unwrap()))
-                .unwrap();
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            wasm_bindgen_futures::spawn_local(async move {
-                let response = reqwest::get(&path).await.unwrap();
-                let bytes = response.bytes().await.unwrap();
-                sender.send(VoxelTree::decompress(&bytes)).unwrap();
-            });
-        }
         World {
-            tree: None,
-            tree_loader: receiver,
-            sliding_fps: VecDeque::with_capacity(100),
+            // sliding_fps: VecDeque::with_capacity(100),
+            tree: VoxelTree::decompress(&std::fs::read(path).unwrap()),
             march_pass: MarchPass::new(width, height),
             indirect_pass: IndirectPass::new(width, height),
             camera: Camera {
@@ -57,8 +42,10 @@ pub fn create_world_from_tree(
                 zfar: 1000.0,
                 speed: 0.5,
                 half_speed: true,
+                disabled: true,
                 ..Default::default()
             },
+            bencher: bench::bench1(),
         }
     }
 }
@@ -87,7 +74,15 @@ pub fn handle_input(
                             std::process::exit(0);
                         }
                         KeyCode::KeyP => {
-                            println!("{:#?}", world.camera);
+                            // println!("{:#?}", world.camera);
+                            println!(
+                                "Keyframe{{translation:Vec3::new({},{},{}),rotations:({},{}),duration: 1.0}},",
+                                world.camera.translation.x,
+                                world.camera.translation.y,
+                                world.camera.translation.z,
+                                world.camera.pitch,
+                                world.camera.yaw,
+                            );
                         }
                         _ => {}
                     }
@@ -115,27 +110,33 @@ pub fn update_and_render(
         width,
         height,
         //
-        window,
+        // window,
         ..
     }: rube_platform::PlatformUpdate<World>,
 ) {
-    if let Ok(tree) = world.tree_loader.try_recv() {
-        world.tree = Some(tree);
-    }
+    // if world.sliding_fps.len() >= 100 {
+    //     world.sliding_fps.pop_front();
+    // }
+    // world.sliding_fps.push_back(1.0 / delta);
+    // window.set_title(&format!(
+    //     "RUBE - {:.2}",
+    //     world.sliding_fps.iter().sum::<f32>() / world.sliding_fps.len() as f32
+    // ));
 
-    if world.sliding_fps.len() >= 100 {
-        world.sliding_fps.pop_front();
-    }
-    world.sliding_fps.push_back(1.0 / delta);
-    window.set_title(&format!(
-        "RUBE - {:.2}",
-        world.sliding_fps.iter().sum::<f32>() / world.sliding_fps.len() as f32
-    ));
-    world.camera.update(delta);
-    if let Some(tree) = &world.tree {
-        march::march_pass(tree, &world.camera, &mut world.march_pass, width, height);
-        indirect::indirect_pass(tree, &world.march_pass, &mut world.indirect_pass, pixels);
-    }
-
+    // world.camera.update(delta);
+    bench::update(&mut world.bencher, &mut world.camera, delta);
+    march::march_pass(
+        &world.tree,
+        &world.camera,
+        &mut world.march_pass,
+        width,
+        height,
+    );
+    indirect::indirect_pass(
+        &world.tree,
+        &world.march_pass,
+        &mut world.indirect_pass,
+        pixels,
+    );
     profiling::finish_frame!();
 }

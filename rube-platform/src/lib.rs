@@ -363,9 +363,13 @@ impl FnPtrs {
 }
 
 fn debug_target() -> Option<&'static str> {
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(any(
+        not(any(target_os = "macos", target_os = "linux")),
+        not(feature = "hot-reload")
+    ))]
     return None;
     #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[allow(unreachable_code)]
     {
         #[cfg(target_os = "linux")]
         let extension = "so";
