@@ -1,8 +1,7 @@
 use dot_vox::{Frame, Model, SceneNode};
 use glam::{IVec3, Mat3, Vec3};
-use rube_voxel::{Brick, VoxelMap};
+use rube::map::{Brick, VoxelMap};
 use std::path::Path;
-use tint::Color;
 
 pub fn voxelize(path: impl AsRef<Path>) -> VoxelMap {
     fn frame_translation(frames: &[Frame]) -> Option<IVec3> {
@@ -98,9 +97,7 @@ pub fn voxelize(path: impl AsRef<Path>) -> VoxelMap {
     let vox = dot_vox::load(path.as_ref().to_str().unwrap()).unwrap();
     let mut map = VoxelMap::default();
     for (i, color) in vox.palette.iter().enumerate() {
-        map.palette[i] = tint::Srgb::new(color.r, color.g, color.b, color.a)
-            .to_linear()
-            .to_array();
+        map.palette[i] = (color.b as u32) | ((color.g as u32) << 8) | ((color.r as u32) << 16);
     }
     descend_tree(
         &mut map,

@@ -1,5 +1,5 @@
 use glam::IVec3;
-use rube_voxel::tree::{Node, VoxelTree, generate_tree};
+use rube::tree::{Node, VoxelTree, generate_tree};
 
 mod obj;
 mod vox;
@@ -18,7 +18,7 @@ fn main() -> std::io::Result<()> {
             let start = std::time::Instant::now();
             let mut nodes = vec![Node::default()];
             let mut leaves = Vec::new();
-            let mut node_hash = rube_voxel::ahash::HashMap::default();
+            let mut node_hash = ahash::HashMap::default();
             let mut saved_bytes = 0;
             let node = generate_tree(
                 &map,

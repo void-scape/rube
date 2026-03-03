@@ -1,20 +1,17 @@
 use ahash::{HashMap, HashMapExt};
 use glam::IVec3;
 
-pub extern crate ahash;
-pub mod tree;
-
 #[derive(Debug)]
 pub struct VoxelMap {
     pub chunks: HashMap<IVec3, Brick>,
-    pub palette: [[f32; 4]; 256],
+    pub palette: [u32; 256],
 }
 
 impl Default for VoxelMap {
     fn default() -> Self {
         Self {
             chunks: HashMap::new(),
-            palette: [[1.0; 4]; 256],
+            palette: [u32::MAX; 256],
         }
     }
 }

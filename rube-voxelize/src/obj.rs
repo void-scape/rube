@@ -1,7 +1,7 @@
 // Stolen from https://github.com/DeadlockCode/voxel_ray_traversal/blob/main/src/voxelize.rs
 
 use glam::{IVec3, UVec3, Vec2, Vec3, Vec4};
-use rube_voxel::{Brick, VoxelMap};
+use rube::map::{Brick, VoxelMap};
 use std::path::Path;
 
 pub fn voxelize(path: impl AsRef<Path>, resolution: u32) -> VoxelMap {

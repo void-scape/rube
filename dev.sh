@@ -1,5 +1,5 @@
 #!/bin/bash
 
-# `prefer-dynamic` allows `rube` to dynamically link with `rube-core`, preventing
+# `prefer-dynamic` allows `rube` to dynamically link with the `rube-platform`, preventing
 # any global state duplication upon loading `rube` from statically linked libraries.
-RUSTFLAGS="-C prefer-dynamic" cargo run
+RUSTFLAGS="-C prefer-dynamic" cargo run $1

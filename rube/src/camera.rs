@@ -96,7 +96,7 @@ impl Camera {
         )
     }
 
-    pub fn projection_matrix(&self, width: u32, height: u32) -> Mat4 {
+    pub fn projection_matrix(&self, width: usize, height: usize) -> Mat4 {
         Mat4::perspective_rh(
             self.fov,
             width as f32 / height as f32,

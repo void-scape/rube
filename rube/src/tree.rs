@@ -1,13 +1,14 @@
-use crate::{Brick, VoxelMap};
+use crate::map::{Brick, VoxelMap};
 use ahash::HashMap;
-use glam::IVec3;
+use glam::{IVec3, Vec3};
 use std::io::{Read, Write};
+use tint::Color;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct VoxelTree {
     pub nodes: Vec<Node>,
     pub leaves: Vec<u8>,
-    pub palette: Vec<[f32; 4]>,
+    pub palette: Vec<u32>,
     pub exp: u32,
 }
 
@@ -25,22 +26,57 @@ impl VoxelTree {
         encoder.read_to_end(&mut decompressed).unwrap();
         postcard::from_bytes(&decompressed).unwrap()
     }
+
+    pub fn packed_srgb(&self, material_id: usize) -> u32 {
+        self.palette[material_id]
+    }
+
+    pub fn pack_srgb(&self, srgb: tint::Srgb) -> u32 {
+        ((srgb.r() as u32) << 16) | ((srgb.g() as u32) << 8) | (srgb.b() as u32)
+    }
+
+    pub fn pack_linear_rgb(&self, linear: Vec3) -> u32 {
+        self.pack_srgb(tint::LinearRgb::from_rgb(linear.x, linear.y, linear.z).to_srgb())
+    }
+
+    pub fn unpack_srgb(&self, srgb: u32) -> tint::Srgb {
+        tint::Srgb::from_rgb(
+            ((srgb >> 16) & 0xff) as u8,
+            ((srgb >> 8) & 0xff) as u8,
+            (srgb & 0xff) as u8,
+        )
+    }
+
+    pub fn srgb(&self, material_id: usize) -> tint::Srgb {
+        let srgb = self.packed_srgb(material_id);
+        self.unpack_srgb(srgb)
+    }
+
+    pub fn linear_rgb(&self, material_id: usize) -> Vec3 {
+        let linear = self.srgb(material_id).to_linear();
+        Vec3::new(linear.r(), linear.g(), linear.b())
+    }
 }
 
 #[repr(C)]
 #[derive(Default, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Node {
-    // [     31    |    1    ]
-    // [ child_ptr | is_leaf ]
-    // is_leaf   // Indicates if this node is a leaf containing plain voxels.
-    // child_ptr // Absolute offset to array of existing child nodes/voxels.
-    child_ptr_is_leaf: u32,
-    // [   32  |   32  ]
-    // [ maskh | maskl ]
-    // Indicates which children/voxels are present in array.
-    maskl: u32,
-    maskh: u32,
-    _pad: u32,
+    // [     31      |    1    ]
+    // [ child_index | is_leaf ]
+    // is_leaf     // Indicates if this node is a leaf containing plain voxels.
+    // child_index // Absolute offset to array of existing child nodes/voxels.
+    child_index_is_leaf: u32,
+    pub mask: u64,
+}
+
+impl Node {
+    pub fn is_leaf(&self) -> bool {
+        (self.child_index_is_leaf & 1) == 1
+    }
+
+    pub fn child_index(&self) -> usize {
+        (self.child_index_is_leaf >> 1) as usize
+    }
 }
 
 pub fn generate_tree(
@@ -95,10 +131,8 @@ pub fn generate_tree(
                 //     new_index
                 // };
                 Node {
-                    maskl: (mask & 0xFFFFFFFF) as u32,
-                    maskh: (mask >> 32) as u32,
-                    child_ptr_is_leaf: (leaf_index << 1) | 1,
-                    _pad: 0,
+                    mask,
+                    child_index_is_leaf: (leaf_index << 1) | 1,
                 }
             }
             None => Node::default(),
@@ -126,7 +160,7 @@ pub fn generate_tree(
                 _saved_bytes,
             );
             // Node contains voxel/children data
-            if child.maskl != 0 || child.maskh != 0 {
+            if child.mask != 0 {
                 mask |= 1 << i;
                 children[children_len] = child;
                 children_len += 1
@@ -135,10 +169,8 @@ pub fn generate_tree(
         let len = nodes.len() as u32;
         nodes.extend(&children[..children_len]);
         Node {
-            maskl: (mask & 0xFFFFFFFF) as u32,
-            maskh: (mask >> 32) as u32,
-            child_ptr_is_leaf: len << 1,
-            _pad: 0,
+            mask,
+            child_index_is_leaf: len << 1,
         }
     }
 }
