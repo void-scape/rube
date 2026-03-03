@@ -2,6 +2,7 @@ use crate::bench::Benchmarker;
 use crate::indirect::IndirectPass;
 use crate::march::MarchPass;
 use crate::scene::Scene;
+use glam::Vec3;
 use rube_platform::winit::{event::*, keyboard::*, window::Window};
 use std::path::Path;
 
@@ -26,7 +27,8 @@ pub struct World {
 pub fn create_world_from_tree(
     path: impl AsRef<Path>,
 ) -> impl FnOnce(&Window, usize, usize) -> World {
-    |_, width, height| {
+    |window, width, height| {
+        window.set_title("RUBE");
         World {
             // sliding_fps: VecDeque::with_capacity(100),
             scene: Scene::from_tree(path),
@@ -61,15 +63,15 @@ pub fn handle_input(
                             std::process::exit(0);
                         }
                         KeyCode::KeyP => {
-                            println!("{:#?}", world.scene.camera);
-                            // println!(
-                            //     "Keyframe{{translation:Vec3::new({},{},{}),rotations:({},{}),duration: 1.0}},",
-                            //     world.scene.camera.translation.x,
-                            //     world.scene.camera.translation.y,
-                            //     world.scene.camera.translation.z,
-                            //     world.scene.camera.pitch,
-                            //     world.scene.camera.yaw,
-                            // );
+                            // println!("{:#?}", world.scene.camera);
+                            println!(
+                                "Keyframe{{translation:Vec3::new({},{},{}),rotations:({},{}),duration: 1.0}},",
+                                world.scene.camera.translation.x,
+                                world.scene.camera.translation.y,
+                                world.scene.camera.translation.z,
+                                world.scene.camera.pitch,
+                                world.scene.camera.yaw,
+                            );
                         }
                         _ => {}
                     }
@@ -113,8 +115,18 @@ pub fn update_and_render(
     //     world.sliding_fps.iter().sum::<f32>() / world.sliding_fps.len() as f32
     // ));
 
-    // world.scene.camera.update(delta);
-    bench::update(&mut world.bencher, &mut world.scene.camera, delta);
+    world.scene.camera.update(delta);
+    #[cfg(feature = "bench")]
+    {
+        bench::update(&mut world.bencher, &mut world.scene.camera, delta);
+        world.scene.light.direction = Vec3::new(0.05, 1.0, 0.05)
+            .normalize()
+            .lerp(
+                Vec3::new(-0.05, 1.0, -0.05).normalize(),
+                65.032684 / world.bencher.playhead,
+            )
+            .normalize();
+    }
     march::march_pass(&world.scene, &mut world.march_pass, width, height);
     indirect::indirect_pass(
         &world.scene,

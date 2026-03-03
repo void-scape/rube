@@ -3,11 +3,11 @@ use wasm_bindgen::prelude::*;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub fn run() {
-    let scale = 20;
+    let scale = 30;
     rube_platform::run(
         16 * scale,
         9 * scale,
-        8,
+        5,
         #[cfg(not(target_arch = "wasm32"))]
         rube::create_world_from_tree(std::env::args().nth(1).expect("map path provided")),
         #[cfg(target_arch = "wasm32")]

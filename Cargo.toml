@@ -14,6 +14,7 @@ crate-type = ["cdylib", "rlib"]
 default = ["dev"]
 dev = ["rube-platform/dev", "rube/dev"]
 tracy = ["rube/tracy", "rube/dev"]
+bench = ["rube/bench"]
 
 [dependencies]
 rube-platform = { path = "rube-platform" }

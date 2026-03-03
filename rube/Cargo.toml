@@ -9,6 +9,7 @@ crate-type = ["dylib", "rlib"]
 [features]
 dev = []
 tracy = ["tracy-client/enable", "profiling/profile-with-tracy"]
+bench = []
 
 [dependencies]
 tint = { git = "https://github.com/void-scape/tint", rev = "8cf23787095301f2644487750c4a4db39a08b60e" }

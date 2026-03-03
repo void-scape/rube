@@ -10,7 +10,7 @@ pub struct Keyframe {
 pub struct Benchmarker {
     frame: FrameStats,
     keyframes: Vec<Keyframe>,
-    playhead: f32,
+    pub playhead: f32,
     dt: f32,
 }
 
@@ -135,6 +135,7 @@ impl FrameStats {
     }
 }
 
+#[allow(unused)]
 pub fn bench1() -> Benchmarker {
     Benchmarker::new(
         1.0 / 30.0,
@@ -207,6 +208,90 @@ pub fn bench1() -> Benchmarker {
             Keyframe {
                 translation: Vec3::new(1.2691292, 1.0328698, 1.282391),
                 rotations: (0.4649984, 4.0850263),
+                duration: 5.0,
+            },
+        ],
+    )
+}
+
+#[allow(unused)]
+pub fn bench2() -> Benchmarker {
+    Benchmarker::new(
+        1.0 / 30.0,
+        vec![
+            Keyframe {
+                translation: Vec3::new(1.0327712, 1.0075046, 1.0571574),
+                rotations: (0.37499875, 12.6200285),
+                duration: 5.0,
+            },
+            Keyframe {
+                translation: Vec3::new(1.0327712, 1.0075046, 1.0571574),
+                rotations: (0.37499875, 12.6200285),
+                duration: 5.0,
+            },
+            Keyframe {
+                translation: Vec3::new(1.0401032, 1.0128554, 1.0744975),
+                rotations: (0.02999881, 11.980015),
+                duration: 5.0,
+            },
+            Keyframe {
+                translation: Vec3::new(1.0746073, 1.0128554, 1.0801904),
+                rotations: (0.0049987966, 10.98501),
+                duration: 5.0,
+            },
+            Keyframe {
+                translation: Vec3::new(1.0791152, 1.0128554, 1.0631496),
+                rotations: (0.70999855, 11.560013),
+                duration: 5.0,
+            },
+            Keyframe {
+                translation: Vec3::new(1.0868993, 1.0378584, 1.0531019),
+                rotations: (-0.3150012, 12.650021),
+                duration: 5.0,
+            },
+            Keyframe {
+                translation: Vec3::new(1.0949527, 1.0434023, 1.0387975),
+                rotations: (-0.2650012, 13.350018),
+                duration: 5.0,
+            },
+            Keyframe {
+                translation: Vec3::new(1.1127602, 1.0434023, 1.0410423),
+                rotations: (-0.44500104, 14.595031),
+                duration: 5.0,
+            },
+            Keyframe {
+                translation: Vec3::new(1.1193871, 1.0386447, 1.0505054),
+                rotations: (-0.2450012, 14.915037),
+                duration: 5.0,
+            },
+            Keyframe {
+                translation: Vec3::new(1.1225107, 1.0271199, 1.0613791),
+                rotations: (-0.22500126, 15.905049),
+                duration: 5.0,
+            },
+            Keyframe {
+                translation: Vec3::new(1.087119, 1.0133595, 1.0586292),
+                rotations: (0.16999874, 15.700034),
+                duration: 5.0,
+            },
+            Keyframe {
+                translation: Vec3::new(1.0660175, 1.0236588, 1.0592116),
+                rotations: (0.9049985, 15.725035),
+                duration: 5.0,
+            },
+            Keyframe {
+                translation: Vec3::new(1.0561638, 1.0458118, 1.0587474),
+                rotations: (1.0899984, 15.755035),
+                duration: 5.0,
+            },
+            Keyframe {
+                translation: Vec3::new(1.0561638, 1.0691243, 1.0587474),
+                rotations: (-0.18500146, 13.355038),
+                duration: 5.0,
+            },
+            Keyframe {
+                translation: Vec3::new(1.0823361, 1.1123073, 1.0576305),
+                rotations: (-1.3150008, 12.570025),
                 duration: 5.0,
             },
         ],

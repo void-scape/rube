@@ -258,6 +258,7 @@ Auxiliary data:
 ### Scope
 
 | name | src_file | src_line | total_ns | total_perc | counts | mean_ns | min_ns | max_ns | std_ns |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | generate | leaf | map | rube/src/indirect.rs | 96 | 465443643 | 1.861291 | 1950 | 238689 | 142958 | 717584 | 46370.855702 |
 | temporal | filter | rube/src/indirect.rs | 193 | 406034514 | 1.623717 | 1950 | 208222 | 44583 | 497166 | 81551.484820 |
 | rube::indirect::indirect_pass | rube/src/indirect.rs | 68 | 11735153133 | 46.928429 | 1950 | 6018027 | 3998917 | 17611833 | 901706.237438 |

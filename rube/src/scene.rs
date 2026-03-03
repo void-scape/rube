@@ -1,10 +1,15 @@
-use crate::{camera::Camera, tree::VoxelTree};
+use crate::{
+    camera::Camera,
+    indirect::{DirectionalLight, SKY_COLOR},
+    tree::VoxelTree,
+};
 use glam::Vec3;
 use std::path::Path;
 
 pub struct Scene {
     pub camera: Camera,
     pub tree: VoxelTree,
+    pub light: DirectionalLight,
 }
 
 impl Scene {
@@ -23,6 +28,11 @@ impl Scene {
                 disabled: true,
                 ..Default::default()
             },
+            light: DirectionalLight {
+                direction: Vec3::new(0.3, 1.0, 0.3).normalize(),
+                color: SKY_COLOR,
+                intensity: 0.05,
+            },
         }
     }
 
@@ -40,6 +50,11 @@ impl Scene {
                 half_speed: true,
                 disabled: true,
                 ..Default::default()
+            },
+            light: DirectionalLight {
+                direction: Vec3::new(0.3, 1.0, 0.3).normalize(),
+                color: SKY_COLOR,
+                intensity: 0.05,
             },
         }
     }

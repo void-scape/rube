@@ -13,7 +13,8 @@ use rand_core::{Rng, SeedableRng};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 use std::f32::consts::TAU;
 
-const SKY_COLOR: Vec3 = Vec3::new(0.246, 0.624, 0.838);
+// pub const SKY_COLOR: Vec3 = Vec3::ZERO;
+pub const SKY_COLOR: Vec3 = Vec3::new(0.246, 0.624, 0.838);
 
 pub struct IndirectPass {
     last_visible_voxels: FxHashMap<usize, VoxelData>,
@@ -54,15 +55,15 @@ struct VoxelData {
     accumulator: Vec3,
     center: Vec3,
     occluded: bool,
-    samples: u16,
+    samples: u32,
     frame: u16,
 }
 
 pub struct DirectionalLight {
-    // normalized, points towards the light
-    direction: Vec3,
-    color: Vec3,
-    intensity: f32,
+    /// normalized, points towards the light
+    pub direction: Vec3,
+    pub color: Vec3,
+    pub intensity: f32,
 }
 
 #[profiling::function]
@@ -73,11 +74,7 @@ pub fn indirect_pass(
     pixels: &mut [u32],
 ) {
     let tree = &scene.tree;
-    let light = DirectionalLight {
-        direction: Vec3::new(0.3, 1.0, 0.3).normalize(),
-        color: SKY_COLOR,
-        intensity: 0.05,
-    };
+    let light = &scene.light;
 
     indirect_pass.frame = indirect_pass.frame.wrapping_add(1);
     indirect_pass.color_buffer.fill(Default::default());
@@ -195,10 +192,8 @@ pub fn indirect_pass(
             data.color = data.accumulator / data.samples as f32;
             if let Some(last_data) = indirect_pass.last_visible_voxels.get(key) {
                 let frame = last_data.frame.saturating_add(1);
-                if frame < u16::MAX {
-                    data.color = last_data.color + (data.color - last_data.color) / frame as f32;
-                    data.frame = frame;
-                }
+                data.color = last_data.color + (data.color - last_data.color) / frame as f32;
+                data.frame = frame;
             }
         }
     }
@@ -226,7 +221,7 @@ fn voxel_indirect(tree: &VoxelTree, hit: &PackedHitInfo, seed: u64) -> Vec3 {
     // compute the shaded point coordinate system using normal N
     let (nt, nb) = normal_coordinate_system(hit.normal());
 
-    let samples = 1;
+    let samples = 2;
     let mut rng = rand_xorshift::XorShiftRng::seed_from_u64(seed);
     for _ in 0..samples {
         let r1 = rng.next_u32() as f32 / u32::MAX as f32;
