@@ -19,6 +19,8 @@ pub struct Camera {
     pub up: bool,
     pub down: bool,
     pub disabled: bool,
+    pub ortho: bool,
+    pub exp_decay_translation: Vec3,
 }
 
 impl Camera {
@@ -30,6 +32,11 @@ impl Camera {
             KeyCode::KeyE => {
                 if state.is_pressed() {
                     self.disabled = !self.disabled;
+                }
+            }
+            KeyCode::KeyO => {
+                if state.is_pressed() {
+                    self.ortho = !self.ortho;
                 }
             }
             KeyCode::KeyA => {
@@ -76,13 +83,16 @@ impl Camera {
             } else {
                 self.speed
             };
-            self.translation += dxz.normalize_or_zero() * speed * dt;
+            let mut frame_dt = Vec3::ZERO;
+            frame_dt += dxz.normalize_or_zero() * speed * dt;
             if self.down {
-                self.translation.y -= speed * dt;
+                frame_dt.y -= speed * dt;
             }
             if self.up {
-                self.translation.y += speed * dt;
+                frame_dt.y += speed * dt;
             }
+            self.exp_decay_translation = self.exp_decay_translation * 0.8 + frame_dt * 0.2;
+            self.translation += self.exp_decay_translation;
         }
     }
 
@@ -97,11 +107,23 @@ impl Camera {
     }
 
     pub fn projection_matrix(&self, width: usize, height: usize) -> Mat4 {
-        Mat4::perspective_rh(
-            self.fov,
-            width as f32 / height as f32,
-            self.znear,
-            self.zfar,
-        )
+        let scale = 1.2;
+        if self.ortho {
+            Mat4::orthographic_rh(
+                width as f32 / -scale,
+                width as f32 / scale,
+                height as f32 / -scale,
+                height as f32 / scale,
+                self.znear,
+                self.zfar,
+            )
+        } else {
+            Mat4::perspective_rh(
+                self.fov,
+                width as f32 / height as f32,
+                self.znear,
+                self.zfar,
+            )
+        }
     }
 }

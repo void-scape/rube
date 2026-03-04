@@ -2,9 +2,8 @@ use crate::bench::Benchmarker;
 use crate::indirect::IndirectPass;
 use crate::march::MarchPass;
 use crate::scene::Scene;
-use glam::Vec3;
 use rube_platform::winit::{event::*, keyboard::*, window::Window};
-use std::path::Path;
+use std::{collections::VecDeque, path::Path};
 
 mod bench;
 mod camera;
@@ -16,7 +15,7 @@ pub mod scene;
 pub mod tree;
 
 pub struct World {
-    // sliding_fps: VecDeque<f32>,
+    sliding_fps: VecDeque<f32>,
     scene: Scene,
     march_pass: MarchPass,
     indirect_pass: IndirectPass,
@@ -30,7 +29,7 @@ pub fn create_world_from_tree(
     |window, width, height| {
         window.set_title("RUBE");
         World {
-            // sliding_fps: VecDeque::with_capacity(100),
+            sliding_fps: VecDeque::with_capacity(100),
             scene: Scene::from_tree(path),
             march_pass: MarchPass::new(width, height),
             indirect_pass: IndirectPass::new(width, height),
@@ -102,22 +101,23 @@ pub fn update_and_render(
         width,
         height,
         //
-        // window,
+        window,
         ..
     }: rube_platform::PlatformUpdate<World>,
 ) {
-    // if world.sliding_fps.len() >= 100 {
-    //     world.sliding_fps.pop_front();
-    // }
-    // world.sliding_fps.push_back(1.0 / delta);
-    // window.set_title(&format!(
-    //     "RUBE - {:.2}",
-    //     world.sliding_fps.iter().sum::<f32>() / world.sliding_fps.len() as f32
-    // ));
+    if world.sliding_fps.len() >= 100 {
+        world.sliding_fps.pop_front();
+    }
+    world.sliding_fps.push_back(1.0 / delta);
+    window.set_title(&format!(
+        "RUBE - {:.2}",
+        world.sliding_fps.iter().sum::<f32>() / world.sliding_fps.len() as f32
+    ));
 
     world.scene.camera.update(delta);
     #[cfg(feature = "bench")]
     {
+        use glam::Vec3;
         bench::update(&mut world.bencher, &mut world.scene.camera, delta);
         world.scene.light.direction = Vec3::new(0.05, 1.0, 0.05)
             .normalize()

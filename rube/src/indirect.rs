@@ -10,7 +10,7 @@ use crate::{
 use fxhash::FxHashMap;
 use glam::Vec3;
 use rand_core::{Rng, SeedableRng};
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
+// use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 use std::f32::consts::TAU;
 
 // pub const SKY_COLOR: Vec3 = Vec3::ZERO;
@@ -74,7 +74,7 @@ pub fn indirect_pass(
     pixels: &mut [u32],
 ) {
     let tree = &scene.tree;
-    let light = &scene.light;
+    // let light = &scene.light;
 
     indirect_pass.frame = indirect_pass.frame.wrapping_add(1);
     indirect_pass.color_buffer.fill(Default::default());
@@ -111,106 +111,111 @@ pub fn indirect_pass(
         }
     }
 
-    {
-        profiling::scope!("shadow occlusion");
+    // {
+    //     profiling::scope!("shadow occlusion");
+    //
+    //     let visible_faces: [bool; 6] = [
+    //         light.direction.x > 0.0,
+    //         light.direction.x < 0.0,
+    //         light.direction.y > 0.0,
+    //         light.direction.y < 0.0,
+    //         light.direction.z > 0.0,
+    //         light.direction.z < 0.0,
+    //     ];
+    //     let normals = [
+    //         Vec3::new(1.0, 0.0, 0.0),
+    //         Vec3::new(-1.0, 0.0, 0.0),
+    //         Vec3::new(0.0, 1.0, 0.0),
+    //         Vec3::new(0.0, -1.0, 0.0),
+    //         Vec3::new(0.0, 0.0, 1.0),
+    //         Vec3::new(0.0, 0.0, -1.0),
+    //     ];
+    //
+    //     indirect_pass
+    //         .visible_voxels
+    //         .par_iter_mut()
+    //         .for_each(|(_, d)| {
+    //             let mut occluded = true;
+    //             for i in (0..6).filter(|i| visible_faces[*i]) {
+    //                 let origin = d.center + normals[i] * (half_size + 1e-4);
+    //                 if cast_ray(
+    //                     tree,
+    //                     Ray {
+    //                         direction: light.direction,
+    //                         origin,
+    //                     },
+    //                 )
+    //                 .escaped()
+    //                 {
+    //                     occluded = false;
+    //                     break;
+    //                 }
+    //             }
+    //             d.occluded = occluded;
+    //         });
+    // }
 
-        let visible_faces: [bool; 6] = [
-            light.direction.x > 0.0,
-            light.direction.x < 0.0,
-            light.direction.y > 0.0,
-            light.direction.y < 0.0,
-            light.direction.z > 0.0,
-            light.direction.z < 0.0,
-        ];
-        let normals = [
-            Vec3::new(1.0, 0.0, 0.0),
-            Vec3::new(-1.0, 0.0, 0.0),
-            Vec3::new(0.0, 1.0, 0.0),
-            Vec3::new(0.0, -1.0, 0.0),
-            Vec3::new(0.0, 0.0, 1.0),
-            Vec3::new(0.0, 0.0, -1.0),
-        ];
+    // {
+    //     profiling::scope!("global illumination");
+    //     indirect_pass
+    //         .color_buffer
+    //         .par_iter_mut()
+    //         .zip(&march_pass.hits)
+    //         .enumerate()
+    //         .filter(|(_, (_, h))| !h.escaped())
+    //         .for_each(|(i, (data, hit))| {
+    //             data.color =
+    //                 voxel_indirect(tree, hit, pcg(i as u32 ^ pcg(indirect_pass.frame)) as u64);
+    //             data.leaf_index_and_escape = (hit.leaf_index() as u32) << 1;
+    //         });
+    // }
 
-        indirect_pass
-            .visible_voxels
-            .par_iter_mut()
-            .for_each(|(_, d)| {
-                let mut occluded = true;
-                for i in (0..6).filter(|i| visible_faces[*i]) {
-                    let origin = d.center + normals[i] * (half_size + 1e-4);
-                    if cast_ray(
-                        tree,
-                        Ray {
-                            direction: light.direction,
-                            origin,
-                        },
-                    )
-                    .escaped()
-                    {
-                        occluded = false;
-                        break;
-                    }
-                }
-                d.occluded = occluded;
-            });
-    }
+    // {
+    //     profiling::scope!("accumulate samples");
+    //     for data in indirect_pass
+    //         .color_buffer
+    //         .iter()
+    //         .filter(|d| (d.leaf_index_and_escape & 1) == 0)
+    //     {
+    //         let voxel_data = indirect_pass
+    //             .visible_voxels
+    //             .get_mut(&((data.leaf_index_and_escape as usize) >> 1))
+    //             .unwrap();
+    //         voxel_data.accumulator += data.color;
+    //         voxel_data.samples += 1;
+    //     }
+    // }
 
-    {
-        profiling::scope!("global illumination");
-        indirect_pass
-            .color_buffer
-            .par_iter_mut()
-            .zip(&march_pass.hits)
-            .enumerate()
-            .filter(|(_, (_, h))| !h.escaped())
-            .for_each(|(i, (data, hit))| {
-                data.color =
-                    voxel_indirect(tree, hit, pcg(i as u32 ^ pcg(indirect_pass.frame)) as u64);
-                data.leaf_index_and_escape = (hit.leaf_index() as u32) << 1;
-            });
-    }
-
-    {
-        profiling::scope!("accumulate samples");
-        for data in indirect_pass
-            .color_buffer
-            .iter()
-            .filter(|d| (d.leaf_index_and_escape & 1) == 0)
-        {
-            let voxel_data = indirect_pass
-                .visible_voxels
-                .get_mut(&((data.leaf_index_and_escape as usize) >> 1))
-                .unwrap();
-            voxel_data.accumulator += data.color;
-            voxel_data.samples += 1;
-        }
-    }
-
-    {
-        profiling::scope!("temporal filter");
-        for (key, data) in indirect_pass.visible_voxels.iter_mut() {
-            data.color = data.accumulator / data.samples as f32;
-            if let Some(last_data) = indirect_pass.last_visible_voxels.get(key) {
-                let frame = last_data.frame.saturating_add(1);
-                data.color = last_data.color + (data.color - last_data.color) / frame as f32;
-                data.frame = frame;
-            }
-        }
-    }
+    // {
+    //     profiling::scope!("temporal filter");
+    //     for (key, data) in indirect_pass.visible_voxels.iter_mut() {
+    //         data.color = data.accumulator / data.samples as f32;
+    //         if let Some(last_data) = indirect_pass.last_visible_voxels.get(key) {
+    //             let frame = last_data.frame.saturating_add(1);
+    //             data.color = last_data.color + (data.color - last_data.color) / frame as f32;
+    //             data.frame = frame;
+    //         }
+    //     }
+    // }
 
     {
         profiling::scope!("write pixels");
         for (pixel, hit) in pixels.iter_mut().zip(march_pass.hits.iter()) {
             if !hit.escaped() {
-                let data = &indirect_pass.visible_voxels[&hit.leaf_index()];
-                let color = if data.occluded {
-                    data.color * 0.2
+                // let data = &indirect_pass.visible_voxels[&hit.leaf_index()];
+                let albedo = if hit.mip_map != 0 {
+                    VoxelTree::unpack_srgb_linear(hit.mip_map)
                 } else {
-                    data.color + light.color * light.intensity
+                    tree.linear_rgb(tree.leaves[hit.leaf_index()] as usize)
                 };
-                *pixel = tree.pack_linear_rgb(color);
+                // let color = if data.occluded {
+                //     albedo * 0.2
+                // } else {
+                let color = albedo;
+                // };
+                *pixel = VoxelTree::pack_linear_rgb(color);
             } else {
-                *pixel = tree.pack_linear_rgb(SKY_COLOR);
+                *pixel = VoxelTree::pack_linear_rgb(SKY_COLOR);
             }
         }
     }

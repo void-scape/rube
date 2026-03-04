@@ -8,6 +8,9 @@ use glam::{IVec3, UVec3, Vec3};
 pub struct PackedHitInfo {
     leaf_index_and_normal_and_escaped: u32,
     pub position: Vec3,
+    // TODO: This needs to be better integrated. There is no point in storing leaf index
+    // if the color data is already here.
+    pub mip_map: u32,
 }
 
 impl PackedHitInfo {
@@ -102,6 +105,8 @@ pub fn cast_ray(tree: &VoxelTree, mut ray: Ray) -> PackedHitInfo {
     let mut pos = ray.origin.clamp(Vec3::splat(1.0), Vec3::splat(1.9999999));
     let inv_dir = 1.0 / -ray.direction.abs();
 
+    let initial_ray_d = tnear.max(0.0);
+
     let mut gs_stack = [0; 11];
 
     let mut side_dist = Vec3::ZERO;
@@ -111,6 +116,26 @@ pub fn cast_ray(tree: &VoxelTree, mut ray: Ray) -> PackedHitInfo {
         while bit(node.mask, child_index) && !node.is_leaf() {
             gs_stack[scale_exp >> 1] = node_index;
             node_index = node.child_index() + popcnt(node.mask, child_index);
+
+            // mipmap early exit check with a ray cone
+            let t = initial_ray_d + (pos - ray.origin).length();
+            let factor = 0.008;
+            // let factor = 0.05;
+            let cell_size = f32::from_bits((scale_exp as u32 + 127 - 23) << 23);
+            let diff = t * factor - cell_size;
+            if diff.is_sign_positive() {
+                let child_node = tree.nodes[node_index];
+                let linear_mip_map = VoxelTree::unpack_srgb_linear(node.mip_map);
+                let linear_child_mip_map = VoxelTree::unpack_srgb_linear(child_node.mip_map);
+                let linear_mip_map =
+                    linear_child_mip_map.lerp(linear_mip_map, (diff / cell_size).clamp(0.0, 1.0));
+
+                hit.position = pos;
+                hit.mip_map = VoxelTree::pack_linear_rgb(linear_mip_map);
+                hit.leaf_index_and_normal_and_escaped = 0;
+                return hit;
+            }
+
             node = tree.nodes[node_index];
             // hit.reads += 1;
             scale_exp -= 2;

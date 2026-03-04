@@ -31,15 +31,15 @@ impl VoxelTree {
         self.palette[material_id]
     }
 
-    pub fn pack_srgb(&self, srgb: tint::Srgb) -> u32 {
+    pub fn pack_srgb(srgb: tint::Srgb) -> u32 {
         ((srgb.r() as u32) << 16) | ((srgb.g() as u32) << 8) | (srgb.b() as u32)
     }
 
-    pub fn pack_linear_rgb(&self, linear: Vec3) -> u32 {
-        self.pack_srgb(tint::LinearRgb::from_rgb(linear.x, linear.y, linear.z).to_srgb())
+    pub fn pack_linear_rgb(linear: Vec3) -> u32 {
+        Self::pack_srgb(tint::LinearRgb::from_rgb(linear.x, linear.y, linear.z).to_srgb())
     }
 
-    pub fn unpack_srgb(&self, srgb: u32) -> tint::Srgb {
+    pub fn unpack_srgb(srgb: u32) -> tint::Srgb {
         tint::Srgb::from_rgb(
             ((srgb >> 16) & 0xff) as u8,
             ((srgb >> 8) & 0xff) as u8,
@@ -47,9 +47,14 @@ impl VoxelTree {
         )
     }
 
+    pub fn unpack_srgb_linear(srgb: u32) -> Vec3 {
+        let linear = Self::unpack_srgb(srgb).to_linear();
+        Vec3::new(linear.r(), linear.g(), linear.b())
+    }
+
     pub fn srgb(&self, material_id: usize) -> tint::Srgb {
         let srgb = self.packed_srgb(material_id);
-        self.unpack_srgb(srgb)
+        Self::unpack_srgb(srgb)
     }
 
     pub fn linear_rgb(&self, material_id: usize) -> Vec3 {
@@ -67,6 +72,7 @@ pub struct Node {
     // child_index // Absolute offset to array of existing child nodes/voxels.
     child_index_is_leaf: u32,
     pub mask: u64,
+    pub mip_map: u32,
 }
 
 impl Node {
@@ -110,11 +116,13 @@ pub fn generate_tree(
                 }
                 let mut mask = 0u64;
                 let mut active_leaves = Vec::with_capacity(64);
+                let mut linear_mip_map = Vec3::ZERO;
                 // generate bitmask of `temp[i] != 0`.
                 for (i, &data) in temp.iter().enumerate() {
                     if data != 0 {
                         mask |= 1 << i;
                         active_leaves.push(data);
+                        linear_mip_map += VoxelTree::unpack_srgb_linear(map.palette[data as usize]);
                     }
                 }
                 let leaf_index = leaves.len() as u32;
@@ -130,9 +138,15 @@ pub fn generate_tree(
                 //     node_hash.insert(active_leaves, new_index);
                 //     new_index
                 // };
+                let mip_map = if !active_leaves.is_empty() {
+                    VoxelTree::pack_linear_rgb(linear_mip_map / active_leaves.len() as f32)
+                } else {
+                    0
+                };
                 Node {
                     mask,
                     child_index_is_leaf: (leaf_index << 1) | 1,
+                    mip_map,
                 }
             }
             None => Node::default(),
@@ -168,9 +182,16 @@ pub fn generate_tree(
         }
         let len = nodes.len() as u32;
         nodes.extend(&children[..children_len]);
+        let accumulated_mip_map = children[..children_len].iter().fold(Vec3::ZERO, |c, l| {
+            let linear = VoxelTree::unpack_srgb(l.mip_map).to_linear();
+            c + Vec3::new(linear.r(), linear.g(), linear.b())
+        });
+        let linear_mip_map = accumulated_mip_map / children_len as f32;
+        let mip_map = VoxelTree::pack_linear_rgb(linear_mip_map);
         Node {
             mask,
             child_index_is_leaf: len << 1,
+            mip_map,
         }
     }
 }
