@@ -140,75 +140,80 @@ pub fn bench1() -> Benchmarker {
     Benchmarker::new(
         1.0 / 30.0,
         vec![
+            // Keyframe {
+            //     translation: Vec3::new(1.1192523, 1.0224879, 1.0697857),
+            //     rotations: (0.20999885, 7.3650107),
+            //     duration: 20.0,
+            // },
             Keyframe {
                 translation: Vec3::new(1.1192523, 1.0224879, 1.0697857),
                 rotations: (0.20999885, 7.3650107),
-                duration: 5.0,
+                duration: 10.0,
             },
             Keyframe {
                 translation: Vec3::new(1.1654801, 1.0356772, 1.0683582),
                 rotations: (-0.010001129, 8.090008),
-                duration: 5.0,
+                duration: 10.0,
             },
             Keyframe {
                 translation: Vec3::new(1.2135956, 1.0746415, 1.1033561),
                 rotations: (-0.1400012, 8.415015),
-                duration: 5.0,
+                duration: 10.0,
             },
             Keyframe {
                 translation: Vec3::new(1.2537198, 1.0541884, 1.1543454),
                 rotations: (-0.31000143, 8.065027),
-                duration: 5.0,
+                duration: 10.0,
             },
             Keyframe {
                 translation: Vec3::new(1.275604, 1.0383988, 1.1835108),
                 rotations: (0.35499853, 6.8100276),
-                duration: 5.0,
+                duration: 10.0,
             },
             Keyframe {
                 translation: Vec3::new(1.2696228, 1.0383988, 1.1954263),
                 rotations: (0.43499845, 9.095041),
-                duration: 5.0,
+                duration: 10.0,
             },
             Keyframe {
                 translation: Vec3::new(1.2247651, 1.046656, 1.1899443),
                 rotations: (0.40999848, 9.580044),
-                duration: 5.0,
+                duration: 10.0,
             },
             Keyframe {
                 translation: Vec3::new(1.2029787, 1.0714092, 1.1679018),
                 rotations: (-0.015001505, 9.335047),
-                duration: 5.0,
+                duration: 10.0,
             },
             Keyframe {
                 translation: Vec3::new(1.1687198, 1.0971253, 1.136002),
                 rotations: (-0.3400014, 8.310042),
-                duration: 5.0,
+                duration: 10.0,
             },
             Keyframe {
                 translation: Vec3::new(1.092891, 1.1488992, 1.1237078),
                 rotations: (-0.68500113, 6.940038),
-                duration: 5.0,
+                duration: 10.0,
             },
             Keyframe {
                 translation: Vec3::new(1.0823298, 1.0954899, 1.219892),
                 rotations: (-0.1950013, 5.8100343),
-                duration: 5.0,
+                duration: 10.0,
             },
             Keyframe {
                 translation: Vec3::new(1.1245404, 1.0579189, 1.2782683),
                 rotations: (0.30499867, 4.9750304),
-                duration: 5.0,
+                duration: 10.0,
             },
             Keyframe {
                 translation: Vec3::new(1.1930584, 1.0328698, 1.3038328),
                 rotations: (0.46999845, 4.740028),
-                duration: 5.0,
+                duration: 10.0,
             },
             Keyframe {
                 translation: Vec3::new(1.2691292, 1.0328698, 1.282391),
                 rotations: (0.4649984, 4.0850263),
-                duration: 5.0,
+                duration: 10.0,
             },
         ],
     )
@@ -219,11 +224,6 @@ pub fn bench2() -> Benchmarker {
     Benchmarker::new(
         1.0 / 30.0,
         vec![
-            Keyframe {
-                translation: Vec3::new(1.0327712, 1.0075046, 1.0571574),
-                rotations: (0.37499875, 12.6200285),
-                duration: 5.0,
-            },
             Keyframe {
                 translation: Vec3::new(1.0327712, 1.0075046, 1.0571574),
                 rotations: (0.37499875, 12.6200285),

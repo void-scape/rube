@@ -11,6 +11,7 @@ pub struct PackedHitInfo {
     // TODO: This needs to be better integrated. There is no point in storing leaf index
     // if the color data is already here.
     pub mip_map: u32,
+    pub reads: u32,
 }
 
 impl PackedHitInfo {
@@ -39,24 +40,33 @@ impl PackedHitInfo {
     }
 }
 
-// #[derive(Default, Clone, Copy)]
-// pub struct HitInfo {
-//     pub leaf_index: usize,
-//     pub material_id: u8,
-//     pub position: Vec3,
-//     pub normal: Vec3,
-//     pub escaped: bool,
-//     pub reads: usize,
-//     pub center: Vec3,
-//     pub half_size: f32,
-// }
-
+#[derive(Clone, Copy)]
 pub struct Ray {
-    pub origin: Vec3,
-    pub direction: Vec3,
+    origin: Vec3,
+    direction: Vec3,
+    lod: bool,
 }
 
-pub fn cast_ray(tree: &VoxelTree, mut ray: Ray) -> PackedHitInfo {
+impl Ray {
+    pub fn new(origin: Vec3, direction: Vec3) -> Self {
+        Self {
+            origin,
+            direction,
+            lod: false,
+        }
+    }
+
+    pub fn lod(mut self) -> Self {
+        self.lod = true;
+        self
+    }
+
+    pub fn cast(self, tree: &VoxelTree) -> PackedHitInfo {
+        cast_ray(tree, self)
+    }
+}
+
+fn cast_ray(tree: &VoxelTree, mut ray: Ray) -> PackedHitInfo {
     let mut hit = PackedHitInfo {
         leaf_index_and_normal_and_escaped: 1,
         ..Default::default()
@@ -86,7 +96,7 @@ pub fn cast_ray(tree: &VoxelTree, mut ray: Ray) -> PackedHitInfo {
     let mut scale_exp = 21;
     let mut node_index = 0;
     let mut node = tree.nodes[node_index];
-    // hit.reads += 1;
+    hit.reads += 1;
 
     // Mirror coordinates to negative ray octant to simplify cell intersections
     let mut mirror_mask = 0;
@@ -117,27 +127,29 @@ pub fn cast_ray(tree: &VoxelTree, mut ray: Ray) -> PackedHitInfo {
             gs_stack[scale_exp >> 1] = node_index;
             node_index = node.child_index() + popcnt(node.mask, child_index);
 
-            // mipmap early exit check with a ray cone
-            let t = initial_ray_d + (pos - ray.origin).length();
-            let factor = 0.008;
-            // let factor = 0.05;
-            let cell_size = f32::from_bits((scale_exp as u32 + 127 - 23) << 23);
-            let diff = t * factor - cell_size;
-            if diff.is_sign_positive() {
-                let child_node = tree.nodes[node_index];
-                let linear_mip_map = VoxelTree::unpack_srgb_linear(node.mip_map);
-                let linear_child_mip_map = VoxelTree::unpack_srgb_linear(child_node.mip_map);
-                let linear_mip_map =
-                    linear_child_mip_map.lerp(linear_mip_map, (diff / cell_size).clamp(0.0, 1.0));
+            if ray.lod {
+                // mipmap early exit check with a ray cone
+                let t = initial_ray_d + (pos - ray.origin).length();
+                // let factor = 0.008;
+                let factor = 0.10;
+                let cell_size = f32::from_bits((scale_exp as u32 + 127 - 23) << 23);
+                let diff = t * factor - cell_size;
+                if diff.is_sign_positive() {
+                    let child_node = tree.nodes[node_index];
+                    let linear_mip_map = VoxelTree::unpack_srgb_linear(node.mip_map);
+                    let linear_child_mip_map = VoxelTree::unpack_srgb_linear(child_node.mip_map);
+                    let linear_mip_map = linear_child_mip_map
+                        .lerp(linear_mip_map, (diff / cell_size).clamp(0.0, 1.0));
 
-                hit.position = pos;
-                hit.mip_map = VoxelTree::pack_linear_rgb(linear_mip_map);
-                hit.leaf_index_and_normal_and_escaped = 0;
-                return hit;
+                    hit.position = pos;
+                    hit.mip_map = VoxelTree::pack_linear_rgb(linear_mip_map);
+                    hit.leaf_index_and_normal_and_escaped = 0;
+                    return hit;
+                }
             }
 
             node = tree.nodes[node_index];
-            // hit.reads += 1;
+            hit.reads += 1;
             scale_exp -= 2;
             child_index = node_cell_index(pos, scale_exp) ^ mirror_mask;
         }
@@ -198,7 +210,7 @@ pub fn cast_ray(tree: &VoxelTree, mut ray: Ray) -> PackedHitInfo {
 
             node_index = gs_stack[scale_exp >> 1];
             node = tree.nodes[node_index];
-            // hit.reads += 1;
+            hit.reads += 1;
         }
     }
 
@@ -208,7 +220,7 @@ pub fn cast_ray(tree: &VoxelTree, mut ray: Ray) -> PackedHitInfo {
 
         let leaf_index = node.child_index() + popcnt(node.mask, child_index);
         // hit.material_id = tree.leaves[leaf_index];
-        // hit.reads += 1;
+        hit.reads += 1;
         hit.leaf_index_and_normal_and_escaped |= (leaf_index as u32) << 4;
         hit.leaf_index_and_normal_and_escaped &= !1;
         // hit.leaf_index = leaf_index;

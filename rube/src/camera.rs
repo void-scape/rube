@@ -1,4 +1,5 @@
-use glam::{Mat4, Vec3};
+use crate::{ray::Ray, tree::VoxelTree};
+use glam::{Mat4, Vec2, Vec3};
 use rube_platform::winit::{event::ElementState, keyboard::KeyCode};
 use std::f32::consts::FRAC_PI_2;
 
@@ -21,6 +22,8 @@ pub struct Camera {
     pub disabled: bool,
     pub ortho: bool,
     pub exp_decay_translation: Vec3,
+    pub exp_decay_rotations: Vec2,
+    pub flying: bool,
 }
 
 impl Camera {
@@ -29,15 +32,14 @@ impl Camera {
             KeyCode::ControlLeft => {
                 self.half_speed = !state.is_pressed();
             }
-            KeyCode::KeyE => {
-                if state.is_pressed() {
-                    self.disabled = !self.disabled;
-                }
+            KeyCode::KeyE if state.is_pressed() => {
+                self.disabled = !self.disabled;
             }
-            KeyCode::KeyO => {
-                if state.is_pressed() {
-                    self.ortho = !self.ortho;
-                }
+            KeyCode::KeyO if state.is_pressed() => {
+                self.ortho = !self.ortho;
+            }
+            KeyCode::KeyF if state.is_pressed() => {
+                self.flying = !self.flying;
             }
             KeyCode::KeyA => {
                 self.left = state.is_pressed();
@@ -64,14 +66,20 @@ impl Camera {
     pub fn handle_mouse(&mut self, dx: f32, dy: f32) {
         if !self.disabled {
             let sensitivity = 0.005;
-            self.yaw += dx * sensitivity;
-            self.pitch += -dy * sensitivity;
-            self.pitch = self.pitch.clamp(-FRAC_PI_2 + 0.001, FRAC_PI_2 - 0.001);
+            let mut frame_dt = Vec2::ZERO;
+            frame_dt.x = dx * sensitivity;
+            frame_dt.y = -dy * sensitivity;
+            self.exp_decay_rotations = self.exp_decay_rotations * 0.8 + frame_dt * 0.2;
         }
     }
 
-    pub fn update(&mut self, dt: f32) {
+    pub fn update(&mut self, tree: &VoxelTree, dt: f32) {
         if !self.disabled {
+            self.exp_decay_rotations *= 0.8;
+            self.yaw += self.exp_decay_rotations.x;
+            self.pitch += self.exp_decay_rotations.y;
+            self.pitch = self.pitch.clamp(-FRAC_PI_2 + 0.001, FRAC_PI_2 - 0.001);
+
             let (yaw_sin, yaw_cos) = self.yaw.sin_cos();
             let forward = Vec3::new(yaw_cos, 0.0, yaw_sin).normalize();
             let right = Vec3::new(-yaw_sin, 0.0, yaw_cos).normalize();
@@ -85,14 +93,28 @@ impl Camera {
             };
             let mut frame_dt = Vec3::ZERO;
             frame_dt += dxz.normalize_or_zero() * speed * dt;
-            if self.down {
-                frame_dt.y -= speed * dt;
+
+            if self.flying {
+                if self.down {
+                    frame_dt.y = speed * dt;
+                }
+                if self.up {
+                    frame_dt.y = speed * dt;
+                }
+                self.exp_decay_translation = self.exp_decay_translation * 0.8 + frame_dt * 0.2;
+                self.translation += self.exp_decay_translation;
+            } else {
+                let new_translation = self.translation + self.exp_decay_translation;
+
+                let height = 0.004;
+                let hit =
+                    Ray::new(new_translation + Vec3::Y * height / 4.0, Vec3::NEG_Y).cast(tree);
+                if hit.position != Vec3::ZERO {
+                    frame_dt.y = ((hit.position.y + height) - new_translation.y) * 10.0 * dt;
+                    self.exp_decay_translation = self.exp_decay_translation * 0.8 + frame_dt * 0.2;
+                    self.translation += self.exp_decay_translation;
+                }
             }
-            if self.up {
-                frame_dt.y += speed * dt;
-            }
-            self.exp_decay_translation = self.exp_decay_translation * 0.8 + frame_dt * 0.2;
-            self.translation += self.exp_decay_translation;
         }
     }
 

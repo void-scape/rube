@@ -3,7 +3,7 @@
 
 use crate::{
     march::MarchPass,
-    ray::{PackedHitInfo, Ray, cast_ray},
+    ray::{PackedHitInfo, Ray},
     scene::Scene,
     tree::VoxelTree,
 };
@@ -70,46 +70,46 @@ pub struct DirectionalLight {
 pub fn indirect_pass(
     scene: &Scene,
     march_pass: &MarchPass,
-    indirect_pass: &mut IndirectPass,
+    _indirect_pass: &mut IndirectPass,
     pixels: &mut [u32],
 ) {
-    let tree = &scene.tree;
+    // let tree = &scene.tree;
     // let light = &scene.light;
 
-    indirect_pass.frame = indirect_pass.frame.wrapping_add(1);
-    indirect_pass.color_buffer.fill(Default::default());
-    std::mem::swap(
-        &mut indirect_pass.visible_voxels,
-        &mut indirect_pass.last_visible_voxels,
-    );
+    // indirect_pass.frame = indirect_pass.frame.wrapping_add(1);
+    // indirect_pass.color_buffer.fill(Default::default());
+    // std::mem::swap(
+    //     &mut indirect_pass.visible_voxels,
+    //     &mut indirect_pass.last_visible_voxels,
+    // );
 
-    // NOTE: currently hardcoded based on the voxelization code
-    let scale_exp = 11;
-    let size_bits = 1u32 << scale_exp;
-    let size = f32::from_bits(0x3f800000 | size_bits) - 1.0;
-    let half_size = size * 0.5;
-
-    {
-        profiling::scope!("generate leaf map");
-
-        indirect_pass.visible_voxels.clear();
-        for hit in march_pass.hits.iter().filter(|h| !h.escaped()) {
-            indirect_pass
-                .visible_voxels
-                .entry(hit.leaf_index())
-                .or_insert_with(|| VoxelData {
-                    color: Vec3::ZERO,
-                    accumulator: Vec3::ZERO,
-                    occluded: false,
-                    samples: 0,
-                    frame: 1,
-                    center: {
-                        let cell_min = crate::ray::floor_scale(hit.position, scale_exp);
-                        cell_min + Vec3::splat(half_size)
-                    },
-                });
-        }
-    }
+    // // NOTE: currently hardcoded based on the voxelization code
+    // let scale_exp = 11;
+    // let size_bits = 1u32 << scale_exp;
+    // let size = f32::from_bits(0x3f800000 | size_bits) - 1.0;
+    // let half_size = size * 0.5;
+    //
+    // {
+    //     profiling::scope!("generate leaf map");
+    //
+    //     indirect_pass.visible_voxels.clear();
+    //     for hit in march_pass.hits.iter().filter(|h| !h.escaped()) {
+    //         indirect_pass
+    //             .visible_voxels
+    //             .entry(hit.leaf_index())
+    //             .or_insert_with(|| VoxelData {
+    //                 color: Vec3::ZERO,
+    //                 accumulator: Vec3::ZERO,
+    //                 occluded: false,
+    //                 samples: 0,
+    //                 frame: 1,
+    //                 center: {
+    //                     let cell_min = crate::ray::floor_scale(hit.position, scale_exp);
+    //                     cell_min + Vec3::splat(half_size)
+    //                 },
+    //             });
+    //     }
+    // }
 
     // {
     //     profiling::scope!("shadow occlusion");
@@ -202,12 +202,13 @@ pub fn indirect_pass(
         profiling::scope!("write pixels");
         for (pixel, hit) in pixels.iter_mut().zip(march_pass.hits.iter()) {
             if !hit.escaped() {
+                let albedo = Vec3::splat(hit.reads as f32) / 200.0;
                 // let data = &indirect_pass.visible_voxels[&hit.leaf_index()];
-                let albedo = if hit.mip_map != 0 {
-                    VoxelTree::unpack_srgb_linear(hit.mip_map)
-                } else {
-                    tree.linear_rgb(tree.leaves[hit.leaf_index()] as usize)
-                };
+                // let albedo = if hit.mip_map != 0 {
+                //     VoxelTree::unpack_srgb_linear(hit.mip_map)
+                // } else {
+                //     tree.linear_rgb(tree.leaves[hit.leaf_index()] as usize)
+                // };
                 // let color = if data.occluded {
                 //     albedo * 0.2
                 // } else {
@@ -215,7 +216,8 @@ pub fn indirect_pass(
                 // };
                 *pixel = VoxelTree::pack_linear_rgb(color);
             } else {
-                *pixel = VoxelTree::pack_linear_rgb(SKY_COLOR);
+                // *pixel = VoxelTree::pack_linear_rgb(SKY_COLOR);
+                *pixel = 0xff000000;
             }
         }
     }
@@ -241,13 +243,7 @@ fn voxel_indirect(tree: &VoxelTree, hit: &PackedHitInfo, seed: u64) -> Vec3 {
         // Don't forget to apply the cosine law (i.e., multiply by cos(theta) = r1).
         // We should also divide the result by the PDF (1 / (2 * M_PI)), but we can do this after
         let origin = hit.position + hit.normal() * 1e-4;
-        let sample_hit = cast_ray(
-            tree,
-            Ray {
-                origin,
-                direction: local_sample,
-            },
-        );
+        let sample_hit = Ray::new(origin, local_sample).cast(tree);
         if !sample_hit.escaped() {
             let dist = hit.position.distance(sample_hit.position);
             let attenuation = (1.0 - (dist / 0.01)).max(0.0);

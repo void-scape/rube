@@ -32,7 +32,10 @@ impl VoxelTree {
     }
 
     pub fn pack_srgb(srgb: tint::Srgb) -> u32 {
-        ((srgb.r() as u32) << 16) | ((srgb.g() as u32) << 8) | (srgb.b() as u32)
+        ((srgb.a() as u32) << 24)
+            | ((srgb.r() as u32) << 16)
+            | ((srgb.g() as u32) << 8)
+            | (srgb.b() as u32)
     }
 
     pub fn pack_linear_rgb(linear: Vec3) -> u32 {

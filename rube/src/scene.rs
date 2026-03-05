@@ -17,15 +17,16 @@ impl Scene {
         Self {
             tree: VoxelTree::decompress(&std::fs::read(path).unwrap()),
             camera: Camera {
-                translation: Vec3::new(1.1192523, 1.0224879, 1.0697857),
-                yaw: 7.3650107,
-                pitch: 0.20999885,
+                translation: Vec3::new(1.383996, 1.0355718, 1.1922992),
+                yaw: 9.500028,
+                pitch: 0.039998103,
                 fov: 90f32.to_radians(),
                 znear: 0.01,
                 zfar: 1000.0,
-                speed: 0.5,
+                speed: 0.1,
                 half_speed: true,
-                disabled: true,
+                disabled: false,
+                flying: false,
                 ..Default::default()
             },
             light: DirectionalLight {
@@ -49,6 +50,7 @@ impl Scene {
                 speed: 0.5,
                 half_speed: true,
                 disabled: true,
+                flying: true,
                 ..Default::default()
             },
             light: DirectionalLight {
@@ -57,5 +59,9 @@ impl Scene {
                 intensity: 0.05,
             },
         }
+    }
+
+    pub fn update(&mut self, dt: f32) {
+        self.camera.update(&self.tree, dt);
     }
 }

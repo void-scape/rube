@@ -1,5 +1,5 @@
 use crate::ray::PackedHitInfo;
-use crate::ray::{Ray, cast_ray};
+use crate::ray::Ray;
 use crate::scene::Scene;
 use glam::{Mat4, Vec2, Vec3, Vec4Swizzles};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
@@ -38,19 +38,9 @@ pub fn march_pass(scene: &Scene, march_pass: &mut MarchPass, width: usize, heigh
                 &inv_proj_matrix,
                 scene.camera.translation,
             );
-            *pixel = cast_ray(&scene.tree, ray);
+            *pixel = ray.lod().cast(&scene.tree);
         });
 }
-
-// // ghost reads
-// if false {
-//     use tint::Color;
-//     let l = hit.reads as f32 / tree.nodes.len() as f32 * 1000.0;
-//     let color = tint::LinearRgb::from_rgb(l, l, l).to_srgb();
-//     *pixel =
-//         (color.b() as u32) | ((color.g() as u32) << 8) | ((color.r() as u32) << 16);
-//     return;
-// }
 
 fn primary_ray(
     px: usize,
@@ -64,8 +54,5 @@ fn primary_ray(
         / Vec2::new(width as f32, height as f32);
     let ndc = Vec2::new(uv.x * 2.0 - 1.0, -(uv.y * 2.0 - 1.0));
     let far = inv_proj_matrix * ndc.extend(1.0).extend(1.0);
-    Ray {
-        direction: (far.xyz() / far.w).normalize(),
-        origin,
-    }
+    Ray::new(origin, (far.xyz() / far.w).normalize())
 }

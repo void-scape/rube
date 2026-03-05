@@ -62,15 +62,15 @@ pub fn handle_input(
                             std::process::exit(0);
                         }
                         KeyCode::KeyP => {
-                            // println!("{:#?}", world.scene.camera);
-                            println!(
-                                "Keyframe{{translation:Vec3::new({},{},{}),rotations:({},{}),duration: 1.0}},",
-                                world.scene.camera.translation.x,
-                                world.scene.camera.translation.y,
-                                world.scene.camera.translation.z,
-                                world.scene.camera.pitch,
-                                world.scene.camera.yaw,
-                            );
+                            println!("{:#?}", world.scene.camera);
+                            // println!(
+                            //     "Keyframe{{translation:Vec3::new({},{},{}),rotations:({},{}),duration: 1.0}},",
+                            //     world.scene.camera.translation.x,
+                            //     world.scene.camera.translation.y,
+                            //     world.scene.camera.translation.z,
+                            //     world.scene.camera.pitch,
+                            //     world.scene.camera.yaw,
+                            // );
                         }
                         _ => {}
                     }
@@ -114,7 +114,7 @@ pub fn update_and_render(
         world.sliding_fps.iter().sum::<f32>() / world.sliding_fps.len() as f32
     ));
 
-    world.scene.camera.update(delta);
+    world.scene.update(delta);
     #[cfg(feature = "bench")]
     {
         use glam::Vec3;
