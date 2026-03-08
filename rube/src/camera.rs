@@ -96,7 +96,7 @@ impl Camera {
 
             if self.flying {
                 if self.down {
-                    frame_dt.y = speed * dt;
+                    frame_dt.y = -speed * dt;
                 }
                 if self.up {
                     frame_dt.y = speed * dt;

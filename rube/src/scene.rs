@@ -17,16 +17,16 @@ impl Scene {
         Self {
             tree: VoxelTree::decompress(&std::fs::read(path).unwrap()),
             camera: Camera {
-                translation: Vec3::new(1.383996, 1.0355718, 1.1922992),
-                yaw: 9.500028,
-                pitch: 0.039998103,
+                translation: Vec3::new(1.0618914, 1.0124959, 1.055843),
+                yaw: 12.839831,
+                pitch: 0.30744472,
                 fov: 90f32.to_radians(),
                 znear: 0.01,
                 zfar: 1000.0,
-                speed: 0.1,
+                speed: 0.25,
                 half_speed: true,
                 disabled: false,
-                flying: false,
+                flying: true,
                 ..Default::default()
             },
             light: DirectionalLight {

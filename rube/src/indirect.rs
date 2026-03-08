@@ -73,7 +73,7 @@ pub fn indirect_pass(
     _indirect_pass: &mut IndirectPass,
     pixels: &mut [u32],
 ) {
-    // let tree = &scene.tree;
+    let tree = &scene.tree;
     // let light = &scene.light;
 
     // indirect_pass.frame = indirect_pass.frame.wrapping_add(1);
@@ -202,13 +202,13 @@ pub fn indirect_pass(
         profiling::scope!("write pixels");
         for (pixel, hit) in pixels.iter_mut().zip(march_pass.hits.iter()) {
             if !hit.escaped() {
-                let albedo = Vec3::splat(hit.reads as f32) / 200.0;
+                // let albedo = Vec3::splat(hit.reads as f32) / 200.0;
                 // let data = &indirect_pass.visible_voxels[&hit.leaf_index()];
-                // let albedo = if hit.mip_map != 0 {
-                //     VoxelTree::unpack_srgb_linear(hit.mip_map)
-                // } else {
-                //     tree.linear_rgb(tree.leaves[hit.leaf_index()] as usize)
-                // };
+                let albedo = if hit.mip_map != 0 {
+                    VoxelTree::unpack_srgb_linear(hit.mip_map)
+                } else {
+                    tree.linear_rgb(tree.leaves[hit.leaf_index()] as usize)
+                };
                 // let color = if data.occluded {
                 //     albedo * 0.2
                 // } else {

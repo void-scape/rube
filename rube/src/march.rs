@@ -6,28 +6,31 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelI
 
 pub struct MarchPass {
     pub hits: Vec<PackedHitInfo>,
+    pub depth: Vec<f32>,
 }
 
 impl MarchPass {
     pub fn new(width: usize, height: usize) -> Self {
         Self {
             hits: vec![PackedHitInfo::default(); width * height],
+            depth: vec![0.0; width * height],
         }
     }
 }
 
 #[profiling::function]
 pub fn march_pass(scene: &Scene, march_pass: &mut MarchPass, width: usize, height: usize) {
-    let inv_proj_matrix = scene
+    let proj_matrix = scene
         .camera
         .projection_matrix(width, height)
-        .mul_mat4(&scene.camera.view_matrix())
-        .inverse();
+        .mul_mat4(&scene.camera.view_matrix());
+    let inv_proj_matrix = proj_matrix.inverse();
     march_pass
         .hits
         .par_iter_mut()
+        .zip(&mut march_pass.depth)
         .enumerate()
-        .for_each(|(i, pixel)| {
+        .for_each(|(i, (pixel, depth))| {
             let py = i / width;
             let px = i % width;
             let ray = primary_ray(
@@ -38,7 +41,14 @@ pub fn march_pass(scene: &Scene, march_pass: &mut MarchPass, width: usize, heigh
                 &inv_proj_matrix,
                 scene.camera.translation,
             );
-            *pixel = ray.lod().cast(&scene.tree);
+            // *pixel = ray.lod().cast(&scene.tree);
+            *pixel = ray.cast(&scene.tree);
+            if pixel.escaped() {
+                *depth = 1.0;
+            } else {
+                let screen_position = proj_matrix * pixel.position.extend(1.0);
+                *depth = screen_position.z / screen_position.w;
+            }
         });
 }
 

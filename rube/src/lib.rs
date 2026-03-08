@@ -1,7 +1,7 @@
-use crate::bench::Benchmarker;
 use crate::indirect::IndirectPass;
 use crate::march::MarchPass;
 use crate::scene::Scene;
+use crate::{bench::Benchmarker, probe::ProbePass};
 use rube_platform::winit::{event::*, keyboard::*, window::Window};
 use std::{collections::VecDeque, path::Path};
 
@@ -10,6 +10,7 @@ mod camera;
 pub mod indirect;
 pub mod map;
 pub mod march;
+mod probe;
 mod ray;
 pub mod scene;
 pub mod tree;
@@ -19,6 +20,7 @@ pub struct World {
     scene: Scene,
     march_pass: MarchPass,
     indirect_pass: IndirectPass,
+    probe_pass: ProbePass,
     #[allow(unused)]
     bencher: Benchmarker,
 }
@@ -28,12 +30,14 @@ pub fn create_world_from_tree(
 ) -> impl FnOnce(&Window, usize, usize) -> World {
     |window, width, height| {
         window.set_title("RUBE");
+        let scene = Scene::from_tree(path);
         World {
             sliding_fps: VecDeque::with_capacity(100),
-            scene: Scene::from_tree(path),
             march_pass: MarchPass::new(width, height),
             indirect_pass: IndirectPass::new(width, height),
+            probe_pass: ProbePass::new(&scene.tree),
             bencher: bench::bench1(),
+            scene,
         }
     }
 }
@@ -128,11 +132,19 @@ pub fn update_and_render(
             .normalize();
     }
     march::march_pass(&world.scene, &mut world.march_pass, width, height);
-    indirect::indirect_pass(
+    // indirect::indirect_pass(
+    //     &world.scene,
+    //     &world.march_pass,
+    //     &mut world.indirect_pass,
+    //     pixels,
+    // );
+    probe::probe_pass(
         &world.scene,
         &world.march_pass,
-        &mut world.indirect_pass,
+        &mut world.probe_pass,
         pixels,
+        width,
+        height,
     );
     profiling::finish_frame!();
 }
